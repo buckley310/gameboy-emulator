@@ -134,25 +134,7 @@ fn main() {
 							gb.cpu.halt = false;
 							break;
 						} else if gb.bus.io.ly < 144 {
-							let sprite_h = match gb.bus.io.lcdc & 0b100 {
-								0 => 8,
-								_ => 16,
-							};
-							sprites = vec![];
-							for oam_ofs in (0..(40 * 4)).step_by(4) {
-								// TODO: sprites per line limit
-								// TODO: sprite priority
-								if gb.bus.oam[oam_ofs] <= gb.bus.io.ly + 16
-									&& gb.bus.oam[oam_ofs] + sprite_h > gb.bus.io.ly + 16
-								{
-									sprites.push(render::Sprite::new((
-										gb.bus.oam[oam_ofs + 0],
-										gb.bus.oam[oam_ofs + 1],
-										gb.bus.oam[oam_ofs + 2],
-										gb.bus.oam[oam_ofs + 3],
-									)));
-								}
-							}
+							sprites = render::oam_scan(&gb);
 						}
 					}
 					render::render_dot(&mut gb, lx, &sprites);

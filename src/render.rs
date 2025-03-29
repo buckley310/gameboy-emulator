@@ -27,6 +27,29 @@ impl Sprite {
 	}
 }
 
+pub fn oam_scan(gb: &GB) -> Vec<Sprite> {
+	let sprite_h = match gb.bus.io.lcdc & 0b100 {
+		0 => 8,
+		_ => 16,
+	};
+	let mut sprites = vec![];
+	for oam_ofs in (0..(40 * 4)).step_by(4) {
+		// TODO: sprites per line limit
+		// TODO: sprite priority
+		if gb.bus.oam[oam_ofs] <= gb.bus.io.ly + 16
+			&& gb.bus.oam[oam_ofs] + sprite_h > gb.bus.io.ly + 16
+		{
+			sprites.push(Sprite::new((
+				gb.bus.oam[oam_ofs + 0],
+				gb.bus.oam[oam_ofs + 1],
+				gb.bus.oam[oam_ofs + 2],
+				gb.bus.oam[oam_ofs + 3],
+			)));
+		}
+	}
+	sprites
+}
+
 pub fn color_dmg(n: u8, palette: u8) -> (u8, u8, u8) {
 	let pcolor = (palette >> (n * 2)) & 0b11;
 	let c = 0x55 * (3 - pcolor);
