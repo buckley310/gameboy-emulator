@@ -1,0 +1,167 @@
+use std::io::Read;
+use std::sync::{Arc, Mutex};
+use std::thread::{sleep, spawn};
+use std::time::{Duration, Instant};
+
+pub mod bus;
+pub mod cpu;
+pub mod ioreg;
+pub mod opcodes;
+pub mod render;
+pub mod repl;
+pub mod ui;
+pub mod verify;
+
+pub struct GB {
+	bus: bus::Bus,
+	cpu: cpu::CPU,
+	framebuffer: [u8; 160 * 144 * 3],
+	breakpoints: Vec<u16>,
+	on_break: bool,
+	single_step: bool,
+}
+impl std::default::Default for GB {
+	fn default() -> GB {
+		GB {
+			bus: bus::Bus::default(),
+			cpu: cpu::CPU::default(),
+			framebuffer: [30; 160 * 144 * 3],
+			breakpoints: vec![],
+			on_break: false,
+			single_step: false,
+		}
+	}
+}
+
+fn slow_down(real_elapsed: Duration, elapsed_dots: u64) {
+	const DOTS_HZ: u32 = 1 << 22;
+	let ingame_elapsed = Duration::from_secs(elapsed_dots) / DOTS_HZ;
+	sleep(ingame_elapsed.saturating_sub(real_elapsed));
+}
+
+fn main() {
+	let mut gb = GB::default();
+	let mut rom: Vec<u8> = vec![];
+
+	let argv: Vec<String> = std::env::args().collect();
+	for arg in &argv[1..] {
+		let mut arg_iter = arg.chars();
+		if arg_iter.next().unwrap() == '-' {
+			for arg_char in arg_iter {
+				match arg_char {
+					'c' => gb.cpu.debug = true,
+					'i' => gb.bus.io.debug = true,
+					'p' => gb.on_break = true,
+					'b' => gb.bus.debug_bank_switch = true,
+					_ => panic!("Bad commandline flag: {arg}"),
+				}
+			}
+		} else {
+			rom = std::fs::File::open(&std::path::Path::new(arg))
+				.unwrap()
+				.bytes()
+				.map(|x| x.unwrap())
+				.collect();
+		}
+	}
+
+	let mut ui = ui::UI::default();
+
+	assert!(rom.len() > 0);
+	gb.bus.load_rom(&rom);
+
+	let lgb = Arc::new(Mutex::new(gb));
+
+	{
+		let x = lgb.clone();
+		spawn(move || {
+			repl::go(x);
+		});
+	}
+
+	let start = Instant::now();
+	const DOTS_PER_SCANLINE: u64 = 456;
+	let mut sprites = vec![];
+	let mut lx = 0; // LCD X pos
+	let mut dots = 0;
+	let mut dots_cpu = 0;
+
+	let mut play = true;
+	while play {
+		slow_down(start.elapsed(), dots);
+
+		let mut gb = lgb.lock().unwrap();
+
+		if ui.draw(&mut gb, &mut play) {
+			gb.on_break = true;
+		}
+		while play && !gb.on_break {
+			if dots_cpu < dots {
+				// Advance CPU
+				let mcycles = cpu::cycle(&mut gb);
+				if gb.single_step {
+					gb.single_step = false;
+					gb.on_break = true;
+				}
+				dots_cpu += (mcycles << 2) >> (gb.bus.io.key1 >> 7);
+				if gb.bus.io.advance_counter_div(mcycles) {
+					gb.cpu.halt = false;
+				}
+				if gb.breakpoints.contains(&gb.cpu.pc) {
+					gb.on_break = true;
+					println!("HIT BREAKPOINT {:x}", gb.cpu.pc);
+				}
+			} else {
+				// Advance screen
+				dots += 1;
+
+				if gb.bus.io.lcdc & 0x80 != 0 {
+					lx += 1;
+					if lx >= DOTS_PER_SCANLINE {
+						lx = 0;
+						gb.bus.io.ly += 1;
+						if gb.bus.io.ly >= 154 {
+							gb.bus.io.ly = 0;
+						}
+
+						if gb.bus.io.ly == gb.bus.io.lyc {
+							gb.bus.io.interrupt |= ioreg::INT_LCD;
+							gb.cpu.halt = false; // TODO: this should wake the system, right?
+						}
+
+						if gb.bus.io.ly == 144 {
+							gb.bus.io.interrupt |= ioreg::INT_VBLANK;
+							gb.cpu.halt = false;
+							break;
+						} else if gb.bus.io.ly < 144 {
+							let sprite_h = match gb.bus.io.lcdc & 0b100 {
+								0 => 8,
+								_ => 16,
+							};
+							sprites = vec![];
+							for oam_ofs in (0..(40 * 4)).step_by(4) {
+								// TODO: sprites per line limit
+								// TODO: sprite priority
+								if gb.bus.oam[oam_ofs] <= gb.bus.io.ly + 16
+									&& gb.bus.oam[oam_ofs] + sprite_h > gb.bus.io.ly + 16
+								{
+									sprites.push(render::Sprite::new((
+										gb.bus.oam[oam_ofs + 0],
+										gb.bus.oam[oam_ofs + 1],
+										gb.bus.oam[oam_ofs + 2],
+										gb.bus.oam[oam_ofs + 3],
+									)));
+								}
+							}
+						}
+					}
+					render::render_dot(&mut gb, lx, &sprites);
+				}
+			}
+		}
+		if gb.on_break {
+			drop(gb);
+			sleep(Duration::from_millis(100));
+		}
+	}
+}
