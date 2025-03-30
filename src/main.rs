@@ -7,10 +7,10 @@ pub mod bus;
 pub mod cpu;
 pub mod ioreg;
 pub mod opcodes;
-pub mod render;
 pub mod repl;
 pub mod ui;
 pub mod verify;
+pub mod video;
 
 pub struct GB {
 	bus: bus::Bus,
@@ -135,9 +135,9 @@ fn main() {
 						}
 					}
 					if lx == 80 {
-						sprites = render::oam_scan(&gb);
+						sprites = video::oam_scan(&gb);
 					}
-					render::render_dot(&mut gb, lx, &sprites);
+					video::render_dot(&mut gb, lx, &sprites);
 					lx += 1;
 				} else if dots & 0xffff == 0 {
 					// if lcd is off, break "sometimes" to draw
