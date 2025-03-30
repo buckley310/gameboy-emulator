@@ -116,7 +116,6 @@ fn main() {
 				dots += 1;
 
 				if gb.bus.io.lcdc & 0x80 != 0 {
-					lx += 1;
 					if lx >= DOTS_PER_SCANLINE {
 						lx = 0;
 						gb.bus.io.ly += 1;
@@ -133,11 +132,13 @@ fn main() {
 							gb.bus.io.interrupt |= ioreg::INT_VBLANK;
 							gb.cpu.halt = false;
 							break;
-						} else if gb.bus.io.ly < 144 {
-							sprites = render::oam_scan(&gb);
 						}
 					}
+					if lx == 80 {
+						sprites = render::oam_scan(&gb);
+					}
 					render::render_dot(&mut gb, lx, &sprites);
+					lx += 1;
 				}
 			}
 		}
