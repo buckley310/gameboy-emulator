@@ -139,6 +139,9 @@ fn main() {
 					}
 					render::render_dot(&mut gb, lx, &sprites);
 					lx += 1;
+				} else if dots & 0xffff == 0 {
+					// if lcd is off, break "sometimes" to draw
+					break;
 				}
 			}
 		}
