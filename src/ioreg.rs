@@ -73,6 +73,7 @@ fn name_of(addr: usize) -> &'static str {
 	}
 }
 
+#[derive(Default)]
 pub struct IoReg {
 	pub debug: bool,
 	pub user_input_buttons: u8,
@@ -101,37 +102,6 @@ pub struct IoReg {
 	pub vbk: bool,
 	pub hide_boot_rom: bool,
 	pub ie: u8,
-}
-impl std::default::Default for IoReg {
-	fn default() -> IoReg {
-		IoReg {
-			debug: false,
-			user_input_buttons: 0,
-			user_input_joypad: 0,
-			joyc: false,
-			p1_joyp: 0,
-			div: 0,
-			tima: 0,
-			tma: 0,
-			tac: 0,
-			interrupt: 0,
-			lcdc: 0x91,
-			stat: 0,
-			scy: 0,
-			scx: 0,
-			ly: 0,
-			lyc: 0,
-			bgp: 0,
-			obp0: 0,
-			obp1: 0,
-			wy: 0,
-			wx: 0,
-			key1: 0,
-			vbk: false,
-			hide_boot_rom: false,
-			ie: 0,
-		}
-	}
 }
 impl IoReg {
 	pub fn get(&self, addr: usize) -> u8 {
