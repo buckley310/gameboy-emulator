@@ -75,12 +75,7 @@ fn name_of(addr: usize) -> &'static str {
 
 #[derive(Default)]
 pub struct IoReg {
-	pub debug: bool,
-	pub user_input_buttons: u8,
-	pub user_input_joypad: u8,
-
-	pub joyc: bool, // not documented in pandocs
-
+	// normal io registers
 	pub p1_joyp: u8,
 	pub div: u16,
 	pub tima: u8,
@@ -102,6 +97,15 @@ pub struct IoReg {
 	pub vbk: bool,
 	pub hide_boot_rom: bool,
 	pub ie: u8,
+
+	// other
+	pub joyc: bool, // not documented in pandocs
+
+	// not io registers
+	pub debug: bool,
+	pub user_input_buttons: u8,
+	pub user_input_joypad: u8,
+	pub lx: u64,
 }
 impl IoReg {
 	pub fn get(&self, addr: usize) -> u8 {
@@ -124,7 +128,7 @@ impl IoReg {
 			0xFF40 => self.lcdc,
 
 			// TODO: report PPU mode
-			0xFF41 => (self.stat & 0b_0_11111_00) | (((self.lyc == self.ly) as u8) << 1),
+			0xFF41 => (self.stat & 0b_0_11111_00) | (((self.lyc == self.ly) as u8) << 2),
 
 			0xFF42 => self.scy,
 			0xFF43 => self.scx,
@@ -161,7 +165,7 @@ impl IoReg {
 			0xFF10..=0xFF3F => {} // TODO: audio
 			0xFF40 => {
 				if data & 0x80 == 0 {
-					// TODO: should we be resetting ly on screen on instead of screen off?
+					self.lx = 0;
 					self.ly = 0;
 				}
 				self.lcdc = data;

@@ -82,7 +82,6 @@ fn main() {
 	let start = Instant::now();
 	const DOTS_PER_SCANLINE: u64 = 456;
 	let mut sprites = vec![];
-	let mut lx = 0; // LCD X pos
 	let mut dots = 0;
 	let mut dots_cpu = 0;
 
@@ -116,8 +115,8 @@ fn main() {
 				dots += 1;
 
 				if gb.bus.io.lcdc & 0x80 != 0 {
-					if lx >= DOTS_PER_SCANLINE {
-						lx = 0;
+					if gb.bus.io.lx >= DOTS_PER_SCANLINE {
+						gb.bus.io.lx = 0;
 						gb.bus.io.ly += 1;
 						if gb.bus.io.ly >= 154 {
 							gb.bus.io.ly = 0;
@@ -134,11 +133,14 @@ fn main() {
 							break;
 						}
 					}
-					if lx == 80 {
+					if gb.bus.io.lx == 80 {
 						sprites = video::oam_scan(&gb);
 					}
-					video::render_dot(&mut gb, lx, &sprites);
-					lx += 1;
+					{
+						let tmp = gb.bus.io.lx;
+						video::render_dot(&mut gb, tmp, &sprites);
+					}
+					gb.bus.io.lx += 1;
 				} else if dots & 0xffff == 0 {
 					// if lcd is off, break "sometimes" to draw
 					break;
