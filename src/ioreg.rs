@@ -1,8 +1,12 @@
+use std::sync::{Arc, Mutex};
+
 pub const INT_VBLANK: u8 = 1;
 pub const INT_LCD: u8 = 2;
 pub const INT_TIMER: u8 = 4;
 pub const INT_SERIAL: u8 = 8;
 pub const INT_JOYPAD: u8 = 16;
+
+pub static AUDIO_PARAMS_SIZE: usize = 0x17;
 
 fn name_of(addr: usize) -> &'static str {
 	match addr {
@@ -98,6 +102,10 @@ pub struct IoReg {
 	pub hide_boot_rom: bool,
 	pub ie: u8,
 
+	// audio
+	// u8 is data. bool is to tell the APU when to trigger
+	pub audio_params: Arc<Mutex<[(u8, bool); AUDIO_PARAMS_SIZE]>>,
+
 	// other
 	pub joyc: bool, // not documented in pandocs
 
@@ -162,7 +170,7 @@ impl IoReg {
 			0xFF06 => self.tma = data,
 			0xFF07 => self.tac = data,
 			0xFF0F => self.interrupt = data,
-			0xFF10..=0xFF3F => {} // TODO: audio
+			0xFF10..=0xFF26 => self.audio_params.lock().unwrap()[addr - 0xFF10] = (data, true),
 			0xFF40 => {
 				if data & 0x80 == 0 {
 					self.lx = 0;

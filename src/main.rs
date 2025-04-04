@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
 use std::time::{Duration, Instant};
 
+pub mod audio;
 pub mod bus;
 pub mod cpu;
 pub mod ioreg;
@@ -42,6 +43,10 @@ fn slow_down(real_elapsed: Duration, elapsed_dots: u64) {
 fn main() {
 	let mut gb = GB::default();
 	let mut rom: Vec<u8> = vec![];
+
+	// let apu = audio::APU::default();
+	// gb.bus.io.audio_params = apu.audio_params;
+	// apu.device.resume();
 
 	let argv: Vec<String> = std::env::args().collect();
 	for arg in &argv[1..] {
