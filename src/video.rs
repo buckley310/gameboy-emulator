@@ -34,8 +34,6 @@ pub fn oam_scan(gb: &GB) -> Vec<Sprite> {
 	};
 	let mut sprites = vec![];
 	for oam_ofs in (0..(40 * 4)).step_by(4) {
-		// TODO: sprites per line limit
-		// TODO: sprite priority
 		if gb.bus.oam[oam_ofs] <= gb.bus.io.ly + 16
 			&& gb.bus.oam[oam_ofs] + sprite_h > gb.bus.io.ly + 16
 		{
@@ -45,8 +43,14 @@ pub fn oam_scan(gb: &GB) -> Vec<Sprite> {
 				gb.bus.oam[oam_ofs + 2],
 				gb.bus.oam[oam_ofs + 3],
 			)));
+			if sprites.len() == 10 {
+				break;
+			}
 		}
 	}
+
+	// TODO: if not gbc_mode, stable-sort by x coord
+
 	sprites
 }
 
@@ -166,6 +170,8 @@ pub fn render_dot(gb: &mut GB, lx: u64, sprites: &Vec<Sprite>) {
 			gb.framebuffer[0 + 3 * (lcd_x + 160 * lcd_y)] = r;
 			gb.framebuffer[1 + 3 * (lcd_x + 160 * lcd_y)] = g;
 			gb.framebuffer[2 + 3 * (lcd_x + 160 * lcd_y)] = b;
+
+			break; // First sprite in the list wins
 		}
 	}
 }
