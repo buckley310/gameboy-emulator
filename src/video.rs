@@ -49,7 +49,9 @@ pub fn oam_scan(gb: &GB) -> Vec<Sprite> {
 		}
 	}
 
-	// TODO: if not gbc_mode, stable-sort by x coord
+	if !gb.bus.io.key0 {
+		sprites.sort_by_key(|x| x.x);
+	}
 
 	sprites
 }
