@@ -70,6 +70,7 @@ fn name_of(addr: usize) -> &'static str {
 		0xFF77 => "PCM34",            // Audio digital outputs 3 & 4
 		0xFFFF => "IE",               // Interrupt enable
 
+		0xFF4C => "KEY0 (CGB mode enable)", // not listed on register summary page
 		0xFF50 => "HIDE_BOOT_ROM_BANK",
 		0xFF60 => "JOYC (undocumented in pandocs)",
 
@@ -97,6 +98,7 @@ pub struct IoReg {
 	pub obp1: u8,
 	pub wy: u8,
 	pub wx: u8,
+	pub key0: bool,
 	pub key1: u8,
 	pub vbk: bool,
 	pub hide_boot_rom: bool,
@@ -144,6 +146,7 @@ impl IoReg {
 			0xFF45 => self.lyc,
 			0xFF4a => self.wy,
 			0xFF4b => self.wx,
+			0xFF4c => (self.key0 as u8) << 2,
 			0xFF4d => self.key1,
 			// 0xFF4F => u8::from(self.vbk) | 254,
 			0xFF50 => self.hide_boot_rom as u8,
@@ -191,6 +194,11 @@ impl IoReg {
 			0xFF49 => self.obp1 = data,
 			0xFF4a => self.wy = data,
 			0xFF4b => self.wx = data,
+			0xFF4c => {
+				if !self.hide_boot_rom {
+					self.key0 = data & 0b100 != 0;
+				}
+			}
 			0xFF4d => todo!("Prepare speed switch"),
 			// 0xFF4F => self.vbk = data & 1 != 0,
 			0xFF50 => {
