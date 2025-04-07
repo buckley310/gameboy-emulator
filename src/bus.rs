@@ -49,7 +49,7 @@ impl MBC {
 			0 => MBC::MBC0,
 			1 => MBC::MBC1,
 			3 => MBC::MBC1,
-			x => panic!("Unknown MBC: {x}"),
+			x => panic!("Unknown MBC: {x:#x}"),
 		}
 	}
 }
