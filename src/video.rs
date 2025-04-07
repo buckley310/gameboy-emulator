@@ -49,7 +49,7 @@ pub fn oam_scan(gb: &GB) -> Vec<Sprite> {
 		}
 	}
 
-	if !gb.bus.io.key0 {
+	if !gb.bus.io.cgb_mode {
 		sprites.sort_by_key(|x| x.x);
 	}
 
