@@ -963,6 +963,10 @@ pub fn cycle(gb: &mut GB) -> u64 {
 		cpu.ime_soon = true;
 	}
 
-	cpu.pc += bytes;
+	let tmp = cpu.pc.overflowing_add(bytes);
+	if tmp.1 {
+		println!("PC OVERFLOW!")
+	}
+	cpu.pc = tmp.0;
 	mcycles
 }
