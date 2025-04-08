@@ -218,15 +218,14 @@ impl UI {
 		}
 
 		{
-			let mut img = vram_dump(&gb.bus);
-
-			let w = img.1;
-			let h = img.2;
+			let w = 160;
+			let h = 144;
 
 			let (x, y) = l.end(w as i32 * 3, h as i32 * 3);
 
+			let mut framebuffer = gb.framebuffer.clone();
 			let surf = sdl2::surface::Surface::from_data(
-				img.0.as_mut(),
+				framebuffer.as_mut(),
 				w,
 				h,
 				w * 3,
@@ -270,14 +269,15 @@ impl UI {
 		}
 
 		{
-			let w = 160;
-			let h = 144;
+			let mut img = vram_dump(&gb.bus);
+
+			let w = img.1;
+			let h = img.2;
 
 			let (x, y) = l.end(w as i32 * 3, h as i32 * 3);
 
-			let mut framebuffer = gb.framebuffer.clone();
 			let surf = sdl2::surface::Surface::from_data(
-				framebuffer.as_mut(),
+				img.0.as_mut(),
 				w,
 				h,
 				w * 3,
