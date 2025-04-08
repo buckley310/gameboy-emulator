@@ -174,6 +174,7 @@ impl IoReg {
 			0xFF07 => self.tac = data,
 			0xFF0F => self.interrupt = data,
 			0xFF10..=0xFF26 => self.audio_params.lock().unwrap()[addr - 0xFF10] = (data, true),
+			0xFF30..=0xFF3F => {} // WaveRAM, not used yet
 			0xFF40 => {
 				if data & 0x80 == 0 {
 					self.lx = 0;
