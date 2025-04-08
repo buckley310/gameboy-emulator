@@ -946,11 +946,7 @@ pub fn cycle(gb: &mut GB) -> u64 {
 				_ => {
 					assert!(opcode & 0b11000111 == 0b11000111);
 					cpu.sp -= 2;
-
-					// I added the +1 here as an educated guess. Seems to work.
-					// Verify this is correct?
 					mem.poke16(cpu.sp, cpu.pc + 1);
-
 					cpu.pc = (opcode as u16) & 0b111000;
 					(0, 4)
 				}
