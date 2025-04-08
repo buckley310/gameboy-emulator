@@ -165,9 +165,8 @@ impl UI {
 				.unwrap();
 		}
 
-		let bg = {
+		{
 			let mut img = bg_map(&gb.bus);
-			let r = img.0.clone();
 
 			let w = img.1;
 			let h = img.2;
@@ -190,9 +189,7 @@ impl UI {
 					Rect::new(x, y, w * 2, h * 2),
 				)
 				.unwrap();
-
-			r
-		};
+		}
 
 		{
 			let mut img = window_map(&gb.bus);
@@ -276,37 +273,11 @@ impl UI {
 			let w = 160;
 			let h = 144;
 
-			let (x, y) = l.stack(w as i32 * 3, h as i32 * 3);
+			let (x, y) = l.end(w as i32 * 3, h as i32 * 3);
 
 			let mut framebuffer = gb.framebuffer.clone();
 			let surf = sdl2::surface::Surface::from_data(
 				framebuffer.as_mut(),
-				w,
-				h,
-				w * 3,
-				PixelFormatEnum::RGB24,
-			)
-			.unwrap();
-
-			self.canvas
-				.copy(
-					&surf.as_texture(&self.canvas.texture_creator()).unwrap(),
-					None,
-					Rect::new(x, y, w * 3, h * 3),
-				)
-				.unwrap();
-		}
-		{
-			let mut img = render_screen_old(bg.as_ref(), &gb.bus);
-			render_sprites(img.0.as_mut(), &gb.bus);
-
-			let w = img.1;
-			let h = img.2;
-
-			let (x, y) = l.end(w as i32 * 3, h as i32 * 3);
-
-			let surf = sdl2::surface::Surface::from_data(
-				img.0.as_mut(),
 				w,
 				h,
 				w * 3,
@@ -443,58 +414,6 @@ fn vram_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 	}
 
 	(img, W as u32, H as u32)
-}
-
-fn render_screen_old(bg: &[u8], mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
-	let mut img = Box::new([0; 160 * 144 * 3]);
-
-	for x in 0..160 {
-		for y in 0..144 {
-			let fb_ofs = (x + mem.io.scx as usize) + (y + mem.io.scy as usize) * 256;
-			img[3 * (x + 160 * y) + 0] = bg[3 * (fb_ofs & 0xffff) + 0];
-			img[3 * (x + 160 * y) + 1] = bg[3 * (fb_ofs & 0xffff) + 1];
-			img[3 * (x + 160 * y) + 2] = bg[3 * (fb_ofs & 0xffff) + 2];
-		}
-	}
-
-	(img, 160, 144)
-}
-
-fn render_sprites(img: &mut [u8], mem: &crate::bus::Bus) {
-	// let larger_sprites = mem.io.lcdc & 0b100 != 0;
-	for oam_ofs in (0..(40 * 4)).step_by(4) {
-		let y = mem.oam[oam_ofs + 0];
-		let x = mem.oam[oam_ofs + 1];
-		let itile = mem.oam[oam_ofs + 2] as usize;
-		let flags = mem.oam[oam_ofs + 3];
-		// let cgb_palette = flags & 0b111;
-		let bank = (flags >> 3 & 1) as usize;
-		let dmg_palette = flags >> 4 & 1 != 0;
-		// let x_flip = flags >> 5 & 1 != 0;
-		// let y_flip = flags >> 6 & 1 != 0;
-		// let prio = flags >> 7 != 0;
-
-		// TODO: handle partially off-screen sprites
-
-		// the +8 here is only okay because we cant render 16-tall tiles
-		if y >= 16 && x >= 8 && y <= 143 + 8 {
-			let y = (y as usize) - 16;
-			let x = (x as usize) - 8;
-			let ofs = y * 160 + x;
-			draw_tile(
-				itile,
-				img.as_mut(),
-				ofs,
-				160,
-				&mem.vram[bank],
-				match dmg_palette {
-					false => mem.io.obp0,
-					true => mem.io.obp1,
-				},
-				true,
-			);
-		}
-	}
 }
 
 fn mem_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
