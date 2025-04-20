@@ -88,19 +88,11 @@ impl UI {
 			event_pump: sdl_context.event_pump().unwrap(),
 		}
 	}
-	pub fn draw(&mut self, gb: &mut GB, play: &mut bool) -> bool {
-		let mut signal_debug = false;
-
+	pub fn draw(&mut self, gb: &mut GB, play: &mut bool) {
 		for event in self.event_pump.poll_iter() {
 			match event {
 				Event::Quit { .. } => {
 					*play = false;
-				}
-				Event::KeyDown {
-					keycode: Some(Keycode::D),
-					..
-				} => {
-					signal_debug = true;
 				}
 				Event::KeyDown {
 					keycode: Some(keycode),
@@ -297,8 +289,6 @@ impl UI {
 		self.canvas.present();
 
 		self.frame_number += 1;
-
-		signal_debug
 	}
 }
 

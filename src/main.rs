@@ -96,9 +96,8 @@ fn main() {
 
 		let mut gb = lgb.lock().unwrap();
 
-		if ui.draw(&mut gb, &mut play) {
-			gb.on_break = true;
-		}
+		ui.draw(&mut gb, &mut play);
+
 		while play && !gb.on_break {
 			dots += 1;
 
