@@ -100,8 +100,43 @@ fn main() {
 			gb.on_break = true;
 		}
 		while play && !gb.on_break {
+			dots += 1;
+
+			// Advance screen
+			if gb.bus.io.lcdc & 0x80 != 0 {
+				if gb.bus.io.lx >= DOTS_PER_SCANLINE {
+					gb.bus.io.lx = 0;
+					gb.bus.io.ly += 1;
+					if gb.bus.io.ly >= 154 {
+						gb.bus.io.ly = 0;
+					}
+
+					if gb.bus.io.ly == gb.bus.io.lyc {
+						gb.bus.io.interrupt |= ioreg::INT_LCD;
+						gb.cpu.halt = false; // TODO: this should wake the system, right?
+					}
+
+					if gb.bus.io.ly == 144 {
+						gb.bus.io.interrupt |= ioreg::INT_VBLANK;
+						gb.cpu.halt = false;
+						break;
+					}
+				}
+				if gb.bus.io.lx == 80 {
+					sprites = video::oam_scan(&gb);
+				}
+				{
+					let tmp = gb.bus.io.lx;
+					video::render_dot(&mut gb, tmp, &sprites);
+				}
+				gb.bus.io.lx += 1;
+			} else if dots & 0xffff == 0 {
+				// if lcd is off, break "sometimes" to draw
+				break;
+			}
+
+			// Advance CPU
 			if dots_cpu < dots {
-				// Advance CPU
 				let mcycles = cpu::cycle(&mut gb);
 				if gb.single_step {
 					gb.single_step = false;
@@ -114,41 +149,6 @@ fn main() {
 				if gb.breakpoints.contains(&gb.cpu.pc) {
 					gb.on_break = true;
 					println!("HIT BREAKPOINT {:x}", gb.cpu.pc);
-				}
-			} else {
-				// Advance screen
-				dots += 1;
-
-				if gb.bus.io.lcdc & 0x80 != 0 {
-					if gb.bus.io.lx >= DOTS_PER_SCANLINE {
-						gb.bus.io.lx = 0;
-						gb.bus.io.ly += 1;
-						if gb.bus.io.ly >= 154 {
-							gb.bus.io.ly = 0;
-						}
-
-						if gb.bus.io.ly == gb.bus.io.lyc {
-							gb.bus.io.interrupt |= ioreg::INT_LCD;
-							gb.cpu.halt = false; // TODO: this should wake the system, right?
-						}
-
-						if gb.bus.io.ly == 144 {
-							gb.bus.io.interrupt |= ioreg::INT_VBLANK;
-							gb.cpu.halt = false;
-							break;
-						}
-					}
-					if gb.bus.io.lx == 80 {
-						sprites = video::oam_scan(&gb);
-					}
-					{
-						let tmp = gb.bus.io.lx;
-						video::render_dot(&mut gb, tmp, &sprites);
-					}
-					gb.bus.io.lx += 1;
-				} else if dots & 0xffff == 0 {
-					// if lcd is off, break "sometimes" to draw
-					break;
 				}
 			}
 		}
