@@ -132,6 +132,31 @@ impl UI {
 		let mut l = Layout::default();
 
 		{
+			let w = 160;
+			let h = 144;
+
+			let (x, y) = l.stack(w as i32 * 3, h as i32 * 3);
+
+			let mut framebuffer = gb.framebuffer.clone();
+			let surf = sdl2::surface::Surface::from_data(
+				framebuffer.as_mut(),
+				w,
+				h,
+				w * 3,
+				PixelFormatEnum::RGB24,
+			)
+			.unwrap();
+
+			self.canvas
+				.copy(
+					&surf.as_texture(&self.canvas.texture_creator()).unwrap(),
+					None,
+					Rect::new(x, y, w * 3, h * 3),
+				)
+				.unwrap();
+		}
+
+		{
 			let mut img = mem_dump(&gb.bus);
 
 			let w = img.1;
@@ -205,31 +230,6 @@ impl UI {
 					&surf.as_texture(&self.canvas.texture_creator()).unwrap(),
 					None,
 					Rect::new(x, y, w * 2, h * 2),
-				)
-				.unwrap();
-		}
-
-		{
-			let w = 160;
-			let h = 144;
-
-			let (x, y) = l.end(w as i32 * 3, h as i32 * 3);
-
-			let mut framebuffer = gb.framebuffer.clone();
-			let surf = sdl2::surface::Surface::from_data(
-				framebuffer.as_mut(),
-				w,
-				h,
-				w * 3,
-				PixelFormatEnum::RGB24,
-			)
-			.unwrap();
-
-			self.canvas
-				.copy(
-					&surf.as_texture(&self.canvas.texture_creator()).unwrap(),
-					None,
-					Rect::new(x, y, w * 3, h * 3),
 				)
 				.unwrap();
 		}
@@ -420,5 +420,5 @@ fn mem_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 		img[3 * (i as usize) + 1] = byte;
 		img[3 * (i as usize) + 2] = byte;
 	}
-	(img, 128, 0x10000 / 128)
+	(img, 256, 0x10000 / 256)
 }
