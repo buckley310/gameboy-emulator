@@ -106,6 +106,36 @@ impl UI {
 					BTN_KEYCODE_DOWN => gb.bus.io.user_input_joypad |= BTN_PIN_DOWN,
 					BTN_KEYCODE_LEFT => gb.bus.io.user_input_joypad |= BTN_PIN_LEFT,
 					BTN_KEYCODE_UP => gb.bus.io.user_input_joypad |= BTN_PIN_UP,
+
+					Keycode::UP => {
+						let ofs = 0xffc0;
+						// mario
+						gb.bus.poke16(ofs, gb.bus.peek16(ofs).overflowing_sub(16).0);
+						// camera
+						gb.bus.poke16(ofs + 8, gb.bus.peek16(ofs));
+					}
+					Keycode::DOWN => {
+						let ofs = 0xffc0;
+						// mario
+						gb.bus.poke16(ofs, gb.bus.peek16(ofs).overflowing_add(16).0);
+						// camera
+						gb.bus.poke16(ofs + 8, gb.bus.peek16(ofs));
+					}
+					Keycode::LEFT => {
+						let ofs = 0xffc2;
+						// mario
+						gb.bus.poke16(ofs, gb.bus.peek16(ofs).overflowing_sub(16).0);
+						// camera
+						gb.bus.poke16(ofs + 8, gb.bus.peek16(ofs));
+					}
+					Keycode::RIGHT => {
+						let ofs = 0xffc2;
+						// mario
+						gb.bus.poke16(ofs, gb.bus.peek16(ofs).overflowing_add(16).0);
+						// camera
+						gb.bus.poke16(ofs + 8, gb.bus.peek16(ofs));
+					}
+
 					_ => {}
 				},
 				Event::KeyUp {
@@ -420,5 +450,21 @@ fn mem_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 		img[3 * (i as usize) + 1] = byte;
 		img[3 * (i as usize) + 2] = byte;
 	}
+
+	let mar_y = mem.peek16(0xffc0);
+	let mar_x = mem.peek16(0xffc2);
+
+	let mut ofs = 0xb000;
+	ofs += (((mar_y as usize) >> 4) & 0xff) << 8;
+	ofs += (mar_x as usize) >> 4 & 0xff;
+
+	for a in [0, 256, 0x10000 - 256] {
+		for b in [0, 1, 0xffff] {
+			img[3 * ((ofs + a + b) & 0xffff) + 0] = 0xff;
+			img[3 * ((ofs + a + b) & 0xffff) + 1] = 0;
+			img[3 * ((ofs + a + b) & 0xffff) + 2] = 0;
+		}
+	}
+
 	(img, 256, 0x10000 / 256)
 }
