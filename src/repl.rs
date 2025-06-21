@@ -48,7 +48,10 @@ pub fn go(lgb: Arc<Mutex<GB>>) {
 				println!("\n-------- BANKS --------");
 				println!(
 					"ROM: {:02x}, EXRAM: {:02x}, EXRAM_ENABLE: {}, ADVANCED_BANK_MODE: {}",
-					gb.bus.rom_bank, gb.bus.exram_bank, gb.bus.exram_enable, gb.bus.bank_mode,
+					gb.bus.cart.rom_bank,
+					gb.bus.cart.exram_bank,
+					gb.bus.cart.exram_enable,
+					gb.bus.cart.bank_mode,
 				);
 				println!("\n-------- REGISTERS --------");
 				println!("{:?}", gb.cpu);
@@ -80,7 +83,7 @@ pub fn go(lgb: Arc<Mutex<GB>>) {
 			"v" => {
 				if words.len() > 1 {
 					match words[1].to_lowercase().as_str() {
-						"bank" => gb.bus.debug_bank_switch ^= true,
+						"bank" => gb.bus.cart.debug_bank_switch ^= true,
 						"cpu" => gb.cpu.debug ^= true,
 						"io" => gb.bus.io.debug ^= true,
 						_ => {}
@@ -89,7 +92,7 @@ pub fn go(lgb: Arc<Mutex<GB>>) {
 				println!("\nverbose:");
 				println!("          IO:{}", gb.bus.io.debug);
 				println!("         CPU:{}", gb.cpu.debug);
-				println!("        BANK:{}", gb.bus.debug_bank_switch);
+				println!("        BANK:{}", gb.bus.cart.debug_bank_switch);
 				println!("\n");
 			}
 			"d" => {

@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 pub mod audio;
 pub mod bus;
+pub mod cart;
 pub mod cpu;
 pub mod ioreg;
 pub mod opcodes;
@@ -57,7 +58,7 @@ fn main() {
 					'c' => gb.cpu.debug = true,
 					'i' => gb.bus.io.debug = true,
 					'p' => gb.on_break = true,
-					'b' => gb.bus.debug_bank_switch = true,
+					'b' => gb.bus.cart.debug_bank_switch = true,
 					_ => panic!("Bad commandline flag: {arg}"),
 				}
 			}
@@ -73,7 +74,7 @@ fn main() {
 	let mut ui = ui::UI::default();
 
 	assert!(rom.len() > 0);
-	gb.bus.load_rom(&rom);
+	gb.bus.cart.load_rom(&rom);
 
 	let lgb = Arc::new(Mutex::new(gb));
 
