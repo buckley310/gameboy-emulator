@@ -65,10 +65,9 @@ impl std::default::Default for Bus {
 impl Bus {
 	pub fn peek(&self, addr16: u16) -> u8 {
 		let addr = addr16 as usize;
-		if addr < 0x100 && !self.io.hide_boot_rom {
-			return BOOT_ROM[addr];
-		}
 		match addr16 {
+			// Boot rom
+			0x0000..=0x00FF if !self.io.hide_boot_rom => BOOT_ROM[addr],
 			// Cartridge (ROM/EXRAM)
 			0x0000..=0x7FFF | 0xA000..=0xBFFF => self.cart.peek(addr16),
 			// vram bank 0/1
@@ -92,9 +91,10 @@ impl Bus {
 		}
 	}
 	pub fn poke(&mut self, addr16: u16, data: u8) {
-		assert!(addr16 > 0xff || self.io.hide_boot_rom);
 		let addr = addr16 as usize;
 		match addr16 {
+			// Boot rom
+			0x0000..=0x00FF if !self.io.hide_boot_rom => panic!("wrote to boot rom"),
 			// Cartridge (ROM/EXRAM)
 			0x0000..=0x7FFF | 0xA000..=0xBFFF => self.cart.poke(addr16, data),
 			// vram bank 0/1
