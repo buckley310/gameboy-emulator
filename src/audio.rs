@@ -74,27 +74,54 @@ impl AudioParams {
 }
 
 pub struct PcmGenerator {
-	phase: i32,
 	audio_params: Arc<Mutex<AudioParams>>,
+
+	c2_freq: u64,
+	c2_freq_low: u64,
+	c2_phase: u64,
+	c2_volume: i32,
 }
 impl PcmGenerator {
 	fn new(audio_params: Arc<Mutex<AudioParams>>) -> Self {
 		PcmGenerator {
-			phase: 0,
 			audio_params,
+
+			c2_freq: 0,
+			c2_freq_low: 0,
+			c2_phase: 0,
+			c2_volume: 0,
 		}
 	}
 }
 impl sdl2::audio::AudioCallback for PcmGenerator {
 	type Channel = i32;
 	fn callback(&mut self, out: &mut [i32]) {
-		// very incomplete, only reads channel 2
-		let audio_params = self.audio_params.lock().unwrap();
-		let vol = (audio_params.channels[1].volume as i32) << 18;
+		let mut audio_params = self.audio_params.lock().unwrap();
+		if audio_params.channels[1].trigger {
+			audio_params.channels[1].trigger = false;
+			self.c2_volume = ((audio_params.channels[1].volume & 0xF0) as i32) << 18;
+			let period = (audio_params.channels[1].frequency as u64)
+				| ((audio_params.channels[1].control as u64 & 0b111) << 8);
+			self.c2_freq = ((1 << 11) - period) >> 1;
+			self.c2_freq_low = match audio_params.channels[1].length >> 6 {
+				0 => self.c2_freq >> 3,
+				1 => self.c2_freq >> 2,
+				2 => self.c2_freq >> 1,
+				3 => (self.c2_freq >> 2) * 3,
+				_ => panic!(),
+			};
+		}
 		for x in out.iter_mut() {
-			*x = if self.phase < 0x800 { vol } else { -vol };
-			self.phase += audio_params.channels[1].frequency as i32;
-			self.phase &= 0xfff;
+			if self.c2_phase == 0 {
+				self.c2_phase = self.c2_freq;
+			} else {
+				self.c2_phase -= 1;
+			}
+			*x = if self.c2_phase < self.c2_freq_low {
+				-self.c2_volume
+			} else {
+				self.c2_volume
+			};
 		}
 	}
 }
