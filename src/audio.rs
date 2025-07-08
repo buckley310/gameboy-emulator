@@ -102,7 +102,7 @@ impl sdl2::audio::AudioCallback for PcmGenerator {
 			self.c2_volume = ((audio_params.channels[1].volume & 0xF0) as i32) << 18;
 			let period = (audio_params.channels[1].frequency as u64)
 				| ((audio_params.channels[1].control as u64 & 0b111) << 8);
-			self.c2_freq = ((1 << 11) - period) >> 1;
+			self.c2_freq = (AUDIO_FREQ as u64) * ((1 << 11) - period) / (1 << 17);
 			self.c2_freq_low = match audio_params.channels[1].length >> 6 {
 				0 => self.c2_freq >> 3,
 				1 => self.c2_freq >> 2,
