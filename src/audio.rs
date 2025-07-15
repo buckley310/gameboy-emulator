@@ -5,11 +5,11 @@ const AUDIO_FREQ: i32 = 48_000;
 
 #[derive(Default)]
 struct Channel {
-	sweep: u8,
-	length: u8,
-	volume: u8,
-	frequency: u8,
-	control: u8,
+	sweep: u8,     // NRx0
+	length: u8,    // NRx1
+	volume: u8,    // NRx2
+	frequency: u8, // NRx3
+	control: u8,   // NRx4
 	trigger: bool,
 }
 
@@ -79,7 +79,10 @@ pub struct PcmGenerator {
 	c2_freq: u64,
 	c2_freq_low: u64,
 	c2_phase: u64,
-	c2_volume: i32,
+	c2_volume: u8,
+	c2_env: u64,
+	c2_env_high: u64,
+	c2_env_direction: bool,
 }
 impl PcmGenerator {
 	fn new(audio_params: Arc<Mutex<AudioParams>>) -> Self {
@@ -90,6 +93,9 @@ impl PcmGenerator {
 			c2_freq_low: 0,
 			c2_phase: 0,
 			c2_volume: 0,
+			c2_env: 0,
+			c2_env_high: 0,
+			c2_env_direction: false,
 		}
 	}
 }
@@ -99,7 +105,11 @@ impl sdl2::audio::AudioCallback for PcmGenerator {
 		let mut audio_params = self.audio_params.lock().unwrap();
 		if audio_params.channels[1].trigger {
 			audio_params.channels[1].trigger = false;
-			self.c2_volume = ((audio_params.channels[1].volume & 0xF0) as i32) << 18;
+			self.c2_env_high =
+				(audio_params.channels[1].volume as u64 & 7) * (AUDIO_FREQ as u64) / 64;
+			self.c2_env = self.c2_env_high;
+			self.c2_env_direction = audio_params.channels[1].volume & 8 != 0;
+			self.c2_volume = audio_params.channels[1].volume & 0xF0;
 			let period = (audio_params.channels[1].frequency as u64)
 				| ((audio_params.channels[1].control as u64 & 0b111) << 8);
 			self.c2_freq = (AUDIO_FREQ as u64) * ((1 << 11) - period) / (1 << 17);
@@ -112,15 +122,25 @@ impl sdl2::audio::AudioCallback for PcmGenerator {
 			};
 		}
 		for x in out.iter_mut() {
+			if self.c2_env_high != 0 {
+				self.c2_env = self.c2_env.saturating_sub(1);
+				if self.c2_env == 0 {
+					self.c2_env = self.c2_env_high;
+					self.c2_volume = match self.c2_env_direction {
+						true => self.c2_volume.saturating_add(0x10),
+						false => self.c2_volume.saturating_sub(0x10),
+					};
+				}
+			}
 			if self.c2_phase == 0 {
 				self.c2_phase = self.c2_freq;
 			} else {
 				self.c2_phase -= 1;
 			}
 			*x = if self.c2_phase < self.c2_freq_low {
-				-self.c2_volume
+				-((self.c2_volume as i32) << 18)
 			} else {
-				self.c2_volume
+				(self.c2_volume as i32) << 18
 			};
 		}
 	}
