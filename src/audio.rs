@@ -1,7 +1,8 @@
 use sdl2::audio::{AudioDevice, AudioSpecDesired};
 use std::sync::{Arc, Mutex};
 
-const AUDIO_FREQ: i32 = 48_000;
+const AUDIO_FREQ: u16 = 48_000;
+const MASTER_VOLUME: f32 = 0.2;
 
 #[derive(Default)]
 struct Channel {
@@ -76,12 +77,12 @@ impl AudioParams {
 pub struct PcmGenerator {
 	audio_params: Arc<Mutex<AudioParams>>,
 
-	c2_freq: u64,
-	c2_freq_low: u64,
-	c2_phase: u64,
+	c2_freq: usize,
+	c2_freq_low: usize,
+	c2_phase: usize,
 	c2_volume: u8,
-	c2_env: u64,
-	c2_env_high: u64,
+	c2_env: usize,
+	c2_env_high: usize,
 	c2_env_direction: bool,
 }
 impl PcmGenerator {
@@ -100,19 +101,21 @@ impl PcmGenerator {
 	}
 }
 impl sdl2::audio::AudioCallback for PcmGenerator {
-	type Channel = i32;
-	fn callback(&mut self, out: &mut [i32]) {
+	type Channel = f32;
+	fn callback(&mut self, out: &mut [f32]) {
+		fn from_ticks(tick_hz: usize, n: usize) -> usize {
+			(AUDIO_FREQ as usize) * n / tick_hz
+		}
 		let mut audio_params = self.audio_params.lock().unwrap();
 		if audio_params.channels[1].trigger {
 			audio_params.channels[1].trigger = false;
-			self.c2_env_high =
-				(audio_params.channels[1].volume as u64 & 7) * (AUDIO_FREQ as u64) / 64;
+			self.c2_env_high = from_ticks(64, audio_params.channels[1].volume as usize & 7);
 			self.c2_env = self.c2_env_high;
 			self.c2_env_direction = audio_params.channels[1].volume & 8 != 0;
 			self.c2_volume = audio_params.channels[1].volume & 0xF0;
-			let period = (audio_params.channels[1].frequency as u64)
-				| ((audio_params.channels[1].control as u64 & 0b111) << 8);
-			self.c2_freq = (AUDIO_FREQ as u64) * ((1 << 11) - period) / (1 << 17);
+			let period = (audio_params.channels[1].frequency as usize)
+				| ((audio_params.channels[1].control as usize & 0b111) << 8);
+			self.c2_freq = from_ticks(1 << 17, (1 << 11) - period);
 			self.c2_freq_low = match audio_params.channels[1].length >> 6 {
 				0 => self.c2_freq >> 3,
 				1 => self.c2_freq >> 2,
@@ -132,15 +135,15 @@ impl sdl2::audio::AudioCallback for PcmGenerator {
 					};
 				}
 			}
+			self.c2_phase = self.c2_phase.saturating_sub(1);
 			if self.c2_phase == 0 {
 				self.c2_phase = self.c2_freq;
-			} else {
-				self.c2_phase -= 1;
 			}
+			let magnitude = (self.c2_volume as f32) / 256.0 * MASTER_VOLUME;
 			*x = if self.c2_phase < self.c2_freq_low {
-				-((self.c2_volume as i32) << 18)
+				-magnitude
 			} else {
-				(self.c2_volume as i32) << 18
+				magnitude
 			};
 		}
 	}
@@ -156,7 +159,7 @@ impl std::default::Default for APU {
 		let sdl_context = sdl2::init().unwrap();
 		let audio_subsystem = sdl_context.audio().unwrap();
 		let desired_spec = AudioSpecDesired {
-			freq: Some(AUDIO_FREQ),
+			freq: Some(AUDIO_FREQ as i32),
 			channels: Some(1),
 			samples: Some((AUDIO_FREQ / 100) as u16),
 		};
