@@ -157,7 +157,7 @@ impl UI {
 		}
 
 		{
-			let mut img = mem_dump(&gb.bus);
+			let mut img = mem_dump(&mut gb.bus);
 
 			let w = img.1;
 			let h = img.2;
@@ -406,7 +406,7 @@ fn vram_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 	(img, W as u32, H as u32)
 }
 
-fn mem_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
+fn mem_dump(mem: &mut crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 	let mut img = Box::new([0; 0x10000 * 3]);
 	for i in 0x0000..=0xFFFF {
 		let byte = match i {
@@ -416,9 +416,12 @@ fn mem_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 			_ => mem.peek(i),
 		}
 		.reverse_bits();
-		img[3 * (i as usize) + 0] = byte;
-		img[3 * (i as usize) + 1] = byte;
-		img[3 * (i as usize) + 2] = byte;
+		img[3 * (i as usize) + 0] = byte.saturating_add(mem.exec_map[i as usize]);
+		img[3 * (i as usize) + 1] = byte.saturating_sub(mem.exec_map[i as usize]);
+		img[3 * (i as usize) + 2] = byte.saturating_sub(mem.exec_map[i as usize]);
+	}
+	for i in 0..0x10000 {
+		mem.exec_map[i as usize] = mem.exec_map[i as usize].saturating_sub(16);
 	}
 	(img, 256, 0x10000 / 256)
 }

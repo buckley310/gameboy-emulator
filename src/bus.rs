@@ -48,6 +48,8 @@ pub struct Bus {
 	pub hram: [u8; 0x7F],
 
 	pub cart: Cartridge,
+
+	pub exec_map: [u8; 0x10000],
 }
 impl std::default::Default for Bus {
 	fn default() -> Bus {
@@ -59,6 +61,7 @@ impl std::default::Default for Bus {
 			oam: [0; 0xA0],
 			io: IoReg::default(),
 			cart: Cartridge::default(),
+			exec_map: [0; 0x10000],
 		}
 	}
 }

@@ -224,6 +224,8 @@ pub fn cycle(gb: &mut GB) -> u64 {
 		return 1;
 	}
 
+	let initial_pc = cpu.pc;
+
 	let opcode = mem.peek(cpu.pc);
 
 	let imm8 = mem.peek(cpu.pc.overflowing_add(1).0);
@@ -953,6 +955,10 @@ pub fn cycle(gb: &mut GB) -> u64 {
 			}
 		}
 	};
+
+	for i in 0..bytes {
+		mem.exec_map[(initial_pc as usize).wrapping_add(i as usize)] = 0xff;
+	}
 
 	cpu.verify.cycles(mcycles, (opcode, imm8));
 
