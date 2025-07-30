@@ -1,4 +1,4 @@
-use sdl2::audio::{AudioDevice, AudioSpecDesired};
+use sdl3::audio::{AudioCallback, AudioFormat, AudioSpec, AudioStream, AudioStreamWithCallback};
 use std::sync::{Arc, Mutex};
 
 const AUDIO_FREQ: u16 = 48_000;
@@ -100,9 +100,9 @@ impl PcmGenerator {
 		}
 	}
 }
-impl sdl2::audio::AudioCallback for PcmGenerator {
-	type Channel = f32;
-	fn callback(&mut self, out: &mut [f32]) {
+impl AudioCallback<f32> for PcmGenerator {
+	fn callback(&mut self, stream: &mut AudioStream, requested: i32) {
+		let mut out = Vec::<f32>::with_capacity(requested as usize);
 		fn from_ticks(tick_hz: usize, n: usize) -> usize {
 			(AUDIO_FREQ as usize) * n / tick_hz
 		}
@@ -124,7 +124,7 @@ impl sdl2::audio::AudioCallback for PcmGenerator {
 				_ => panic!(),
 			};
 		}
-		for x in out.iter_mut() {
+		for _ in 0..requested {
 			if self.c2_env_high != 0 {
 				self.c2_env = self.c2_env.saturating_sub(1);
 				if self.c2_env == 0 {
@@ -140,33 +140,33 @@ impl sdl2::audio::AudioCallback for PcmGenerator {
 				self.c2_phase = self.c2_freq;
 			}
 			let magnitude = (self.c2_volume as f32) / 256.0 * MASTER_VOLUME;
-			*x = if self.c2_phase < self.c2_freq_low {
+			out.push(if self.c2_phase < self.c2_freq_low {
 				-magnitude
 			} else {
 				magnitude
-			};
+			});
 		}
+		stream.put_data_f32(&out).unwrap();
 	}
 }
 
 pub struct APU {
 	pub audio_params: Arc<Mutex<AudioParams>>,
-	pub device: AudioDevice<PcmGenerator>,
+	pub device: AudioStreamWithCallback<PcmGenerator>,
 }
 impl std::default::Default for APU {
 	fn default() -> Self {
 		let audio_params = Arc::new(Mutex::new(AudioParams::default()));
-		let sdl_context = sdl2::init().unwrap();
+		let sdl_context = sdl3::init().unwrap();
 		let audio_subsystem = sdl_context.audio().unwrap();
-		let desired_spec = AudioSpecDesired {
+		// TODO: increase frequency of callback
+		let desired_spec = AudioSpec {
 			freq: Some(AUDIO_FREQ as i32),
 			channels: Some(1),
-			samples: Some((AUDIO_FREQ / 100) as u16),
+			format: Some(AudioFormat::f32_sys()),
 		};
 		let device = audio_subsystem
-			.open_playback(None, &desired_spec, |_| {
-				PcmGenerator::new(audio_params.clone())
-			})
+			.open_playback_stream(&desired_spec, PcmGenerator::new(audio_params.clone()))
 			.unwrap();
 		Self {
 			audio_params,

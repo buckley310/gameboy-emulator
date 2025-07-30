@@ -1,11 +1,12 @@
 use crate::GB;
 
-use sdl2::{
+use sdl3::{
 	event::Event,
 	keyboard::Keycode,
-	pixels::{Color, PixelFormatEnum},
+	pixels::{Color, PixelFormat, PixelFormatEnum},
 	rect::Rect,
-	render::Canvas,
+	render::{Canvas, ScaleMode},
+	surface::Surface,
 	video::Window,
 	EventPump,
 };
@@ -21,14 +22,15 @@ const BTN_PIN_DOWN: u8 = 1 << 3;
 
 const BTN_KEYCODE_A: Keycode = Keycode::R;
 const BTN_KEYCODE_B: Keycode = Keycode::E;
-const BTN_KEYCODE_SELECT: Keycode = Keycode::BACKSPACE;
-const BTN_KEYCODE_START: Keycode = Keycode::RETURN;
+const BTN_KEYCODE_SELECT: Keycode = Keycode::Backspace;
+const BTN_KEYCODE_START: Keycode = Keycode::Return;
 const BTN_KEYCODE_RIGHT: Keycode = Keycode::L;
 const BTN_KEYCODE_LEFT: Keycode = Keycode::J;
 const BTN_KEYCODE_UP: Keycode = Keycode::I;
 const BTN_KEYCODE_DOWN: Keycode = Keycode::K;
 
 const PADDING: i32 = 10;
+const SCALE_MODE: ScaleMode = ScaleMode::Nearest;
 
 struct Layout {
 	x: i32,
@@ -67,7 +69,7 @@ pub struct UI {
 }
 impl UI {
 	pub fn default() -> UI {
-		let sdl_context = sdl2::init().unwrap();
+		let sdl_context = sdl3::init().unwrap();
 		let video_subsystem = sdl_context.video().unwrap();
 
 		let window = video_subsystem
@@ -76,11 +78,7 @@ impl UI {
 			.build()
 			.unwrap();
 
-		let canvas = sdl2::render::CanvasBuilder::new(window.clone())
-			// .accelerated()
-			// .present_vsync()
-			.build()
-			.unwrap();
+		let canvas = window.into_canvas();
 
 		UI {
 			canvas,
@@ -89,6 +87,9 @@ impl UI {
 		}
 	}
 	pub fn draw(&mut self, gb: &mut GB, play: &mut bool) {
+		let rgb24 = PixelFormat::from(PixelFormatEnum::RGB24);
+		let tex_c = self.canvas.texture_creator();
+
 		for event in self.event_pump.poll_iter() {
 			match event {
 				Event::Quit { .. } => {
@@ -138,21 +139,12 @@ impl UI {
 			let (x, y) = l.stack(w as i32 * 3, h as i32 * 3);
 
 			let mut framebuffer = gb.framebuffer.clone();
-			let surf = sdl2::surface::Surface::from_data(
-				framebuffer.as_mut(),
-				w,
-				h,
-				w * 3,
-				PixelFormatEnum::RGB24,
-			)
-			.unwrap();
+			let surf = Surface::from_data(framebuffer.as_mut(), w, h, w * 3, rgb24).unwrap();
 
+			let mut tex = surf.as_texture(&tex_c).unwrap();
+			tex.set_scale_mode(SCALE_MODE);
 			self.canvas
-				.copy(
-					&surf.as_texture(&self.canvas.texture_creator()).unwrap(),
-					None,
-					Rect::new(x, y, w * 3, h * 3),
-				)
+				.copy(&tex, None, Rect::new(x, y, w * 3, h * 3))
 				.unwrap();
 		}
 
@@ -164,21 +156,12 @@ impl UI {
 
 			let (x, y) = l.end(w as i32 * 2, h as i32 * 2);
 
-			let surf = sdl2::surface::Surface::from_data(
-				img.0.as_mut(),
-				w,
-				h,
-				w * 3,
-				PixelFormatEnum::RGB24,
-			)
-			.unwrap();
+			let surf = Surface::from_data(img.0.as_mut(), w, h, w * 3, rgb24).unwrap();
 
+			let mut tex = surf.as_texture(&tex_c).unwrap();
+			tex.set_scale_mode(SCALE_MODE);
 			self.canvas
-				.copy(
-					&surf.as_texture(&self.canvas.texture_creator()).unwrap(),
-					None,
-					Rect::new(x, y, w * 2, h * 2),
-				)
+				.copy(&tex, None, Rect::new(x, y, w * 2, h * 2))
 				.unwrap();
 		}
 
@@ -190,21 +173,12 @@ impl UI {
 
 			let (x, y) = l.stack(w as i32 * 2, h as i32 * 2);
 
-			let surf = sdl2::surface::Surface::from_data(
-				img.0.as_mut(),
-				w,
-				h,
-				w * 3,
-				PixelFormatEnum::RGB24,
-			)
-			.unwrap();
+			let surf = Surface::from_data(img.0.as_mut(), w, h, w * 3, rgb24).unwrap();
 
+			let mut tex = surf.as_texture(&tex_c).unwrap();
+			tex.set_scale_mode(SCALE_MODE);
 			self.canvas
-				.copy(
-					&surf.as_texture(&self.canvas.texture_creator()).unwrap(),
-					None,
-					Rect::new(x, y, w * 2, h * 2),
-				)
+				.copy(&tex, None, Rect::new(x, y, w * 2, h * 2))
 				.unwrap();
 		}
 
@@ -216,21 +190,12 @@ impl UI {
 
 			let (x, y) = l.end(w as i32 * 2, h as i32 * 2);
 
-			let surf = sdl2::surface::Surface::from_data(
-				img.0.as_mut(),
-				w,
-				h,
-				w * 3,
-				PixelFormatEnum::RGB24,
-			)
-			.unwrap();
+			let surf = Surface::from_data(img.0.as_mut(), w, h, w * 3, rgb24).unwrap();
 
+			let mut tex = surf.as_texture(&tex_c).unwrap();
+			tex.set_scale_mode(SCALE_MODE);
 			self.canvas
-				.copy(
-					&surf.as_texture(&self.canvas.texture_creator()).unwrap(),
-					None,
-					Rect::new(x, y, w * 2, h * 2),
-				)
+				.copy(&tex, None, Rect::new(x, y, w * 2, h * 2))
 				.unwrap();
 		}
 
@@ -242,21 +207,12 @@ impl UI {
 
 			let (x, y) = l.end(w as i32 * 3, h as i32 * 3);
 
-			let surf = sdl2::surface::Surface::from_data(
-				img.0.as_mut(),
-				w,
-				h,
-				w * 3,
-				PixelFormatEnum::RGB24,
-			)
-			.unwrap();
+			let surf = Surface::from_data(img.0.as_mut(), w, h, w * 3, rgb24).unwrap();
 
+			let mut tex = surf.as_texture(&tex_c).unwrap();
+			tex.set_scale_mode(SCALE_MODE);
 			self.canvas
-				.copy(
-					&surf.as_texture(&self.canvas.texture_creator()).unwrap(),
-					None,
-					Rect::new(x, y, w * 3, h * 3),
-				)
+				.copy(&tex, None, Rect::new(x, y, w * 3, h * 3))
 				.unwrap();
 		}
 
@@ -268,21 +224,12 @@ impl UI {
 
 			let (x, y) = l.end(w as i32 * 3, h as i32 * 3);
 
-			let surf = sdl2::surface::Surface::from_data(
-				img.0.as_mut(),
-				w,
-				h,
-				w * 3,
-				PixelFormatEnum::RGB24,
-			)
-			.unwrap();
+			let surf = Surface::from_data(img.0.as_mut(), w, h, w * 3, rgb24).unwrap();
 
+			let mut tex = surf.as_texture(&tex_c).unwrap();
+			tex.set_scale_mode(SCALE_MODE);
 			self.canvas
-				.copy(
-					&surf.as_texture(&self.canvas.texture_creator()).unwrap(),
-					None,
-					Rect::new(x, y, w * 3, h * 3),
-				)
+				.copy(&tex, None, Rect::new(x, y, w * 3, h * 3))
 				.unwrap();
 		}
 
