@@ -126,7 +126,7 @@ impl IoReg {
 						0b11_0000 => 0xf,
 						0b01_0000 => buttons,
 						0b10_0000 => joypad,
-						_ => buttons & joypad, // TODO: is this one correct?
+						_ => buttons & joypad,
 					}
 			}
 			0xFF04 => (self.div >> 8) as u8,
