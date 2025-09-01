@@ -1,6 +1,7 @@
 use crate::GB;
 
 use sdl3::{
+	EventPump,
 	event::Event,
 	keyboard::Keycode,
 	pixels::{Color, PixelFormat, PixelFormatEnum},
@@ -8,7 +9,6 @@ use sdl3::{
 	render::{Canvas, ScaleMode},
 	surface::Surface,
 	video::Window,
-	EventPump,
 };
 
 const BTN_PIN_A: u8 = 1 << 0;
@@ -269,7 +269,7 @@ fn window_map(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 	for x in 0..32 {
 		for y in 0..32 {
 			// TODO: LCDC controls tile area 0x1800/0x1C00
-			let mut itile = mem.vram[0][0x1C00 + (x + y * 32)] as usize;
+			let mut itile = mem.vram[0x1C00 + (x + y * 32)] as usize;
 			if mem.io.lcdc & 0b10000 == 0 && itile & 0x80 == 0 {
 				itile |= 0x100;
 			}
@@ -278,7 +278,7 @@ fn window_map(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 				img.as_mut(),
 				(x * 8) + (y * 8 * 256),
 				256,
-				&mem.vram[0],
+				&mem.vram,
 				mem.io.bgp,
 				false,
 			);
@@ -294,7 +294,7 @@ fn bg_map(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 	for x in 0..32 {
 		for y in 0..32 {
 			// TODO: LCDC controls tile area 0x1800/0x1C00
-			let mut itile = mem.vram[0][0x1800 + (x + y * 32)] as usize;
+			let mut itile = mem.vram[0x1800 + (x + y * 32)] as usize;
 			if mem.io.lcdc & 0b10000 == 0 && itile & 0x80 == 0 {
 				itile |= 0x100;
 			}
@@ -303,7 +303,7 @@ fn bg_map(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 				img.as_mut(),
 				(x * 8) + (y * 8 * 256),
 				256,
-				&mem.vram[0],
+				&mem.vram,
 				mem.io.bgp,
 				false,
 			);
@@ -328,7 +328,7 @@ fn tile_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 			img.as_mut(),
 			(itile % OUTPUT_WIDTH_IN_TILES * 8) + (itile / OUTPUT_WIDTH_IN_TILES * 8 * 8 * 16),
 			OUTPUT_WIDTH,
-			&mem.vram[0],
+			&mem.vram,
 			0b_11_10_01_00,
 			false,
 		);
@@ -344,7 +344,7 @@ fn vram_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 	let mut img = Box::new([0; W * H * 3]);
 
 	for i in 0..(W * H) {
-		let c = mem.vram[0][i];
+		let c = mem.vram[i];
 		img[3 * i + 0] = c;
 		img[3 * i + 1] = c;
 		img[3 * i + 2] = c;

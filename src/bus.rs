@@ -1,8 +1,8 @@
 use crate::cart::Cartridge;
 use crate::ioreg::IoReg;
 
-const VRAM_BANK_SIZE: usize = 0x2000;
-const WRAM_BANK_SIZE: usize = 0x1000;
+const VRAM_SIZE: usize = 0x2000;
+const WRAM_SIZE: usize = 0x2000;
 
 const BOOT_ROM: [u8; 0x100] = [
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -12,16 +12,8 @@ const BOOT_ROM: [u8; 0x100] = [
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	////////////////////////////////////////////////////////////////
-
-	// enable DMG compat mode if DMG rom is present
-	0xfa, 0x43, 0x01, // ld a, ($0143)
-	0xe6, 0x80, // and a, $80
-	0x28, 0x05, // jr Z, $05
-	0xfa, 0x43, 0x01, // ld a, ($0143)
-	0xe0, 0x4c, // ldh ($4c), a
-	//
 
 	// set up stack
 	0x31, 0xfe, 0xff, // LD SP, $FFFE
@@ -38,10 +30,9 @@ const BOOT_ROM: [u8; 0x100] = [
 ];
 
 pub struct Bus {
-	pub vram: [[u8; VRAM_BANK_SIZE]; 2],
+	pub vram: [u8; VRAM_SIZE],
 
-	pub wram: [[u8; WRAM_BANK_SIZE]; 8],
-	pub wram_bank: usize,
+	pub wram: [u8; WRAM_SIZE],
 
 	pub oam: [u8; 0xA0],
 	pub io: IoReg,
@@ -52,9 +43,8 @@ pub struct Bus {
 impl std::default::Default for Bus {
 	fn default() -> Bus {
 		Bus {
-			vram: [[0; VRAM_BANK_SIZE]; 2],
-			wram: [[0; WRAM_BANK_SIZE]; 8],
-			wram_bank: 0,
+			vram: [0; VRAM_SIZE],
+			wram: [0; WRAM_SIZE],
 			hram: [0; 0x7f],
 			oam: [0; 0xA0],
 			io: IoReg::default(),
@@ -70,12 +60,10 @@ impl Bus {
 			0x0000..=0x00FF if !self.io.hide_boot_rom => BOOT_ROM[addr],
 			// Cartridge (ROM/EXRAM)
 			0x0000..=0x7FFF | 0xA000..=0xBFFF => self.cart.peek(addr16),
-			// vram bank 0/1
-			0x8000..=0x9FFF => self.vram[usize::from(self.io.vbk)][addr - 0x8000], // TODO: banks
-			// WRAM bank 0
-			0xC000..=0xCFFF => self.wram[0][addr - 0xC000],
-			// WRAM bank 1-7
-			0xD000..=0xDFFF => self.wram[self.wram_bank.max(1)][addr - 0xD000],
+			// vram
+			0x8000..=0x9FFF => self.vram[addr - 0x8000],
+			// WRAM
+			0xC000..=0xDFFF => self.wram[addr - 0xC000],
 			// Echo RAM
 			0xE000..=0xFDFF => self.peek(addr16 - 0x2000),
 			// OAM
@@ -97,12 +85,10 @@ impl Bus {
 			0x0000..=0x00FF if !self.io.hide_boot_rom => panic!("wrote to boot rom"),
 			// Cartridge (ROM/EXRAM)
 			0x0000..=0x7FFF | 0xA000..=0xBFFF => self.cart.poke(addr16, data),
-			// vram bank 0/1
-			0x8000..=0x9FFF => self.vram[usize::from(self.io.vbk)][addr - 0x8000] = data,
-			// WRAM bank 0
-			0xC000..=0xCFFF => self.wram[0][addr - 0xC000] = data,
-			// WRAM bank 1-7
-			0xD000..=0xDFFF => self.wram[self.wram_bank.max(1)][addr - 0xD000] = data,
+			// vram
+			0x8000..=0x9FFF => self.vram[addr - 0x8000] = data,
+			// WRAM
+			0xC000..=0xDFFF => self.wram[addr - 0xC000] = data,
 			// Echo RAM
 			0xE000..=0xFDFF => {}
 			// OAM

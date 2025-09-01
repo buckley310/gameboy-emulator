@@ -8,8 +8,6 @@ pub struct Sprite {
 	y_flip: bool,
 	x_flip: bool,
 	dmg_palette: bool,
-	// bank: bool,
-	// cgb_palette: u8,
 }
 impl Sprite {
 	pub fn new(data: (u8, u8, u8, u8)) -> Sprite {
@@ -21,8 +19,6 @@ impl Sprite {
 			y_flip: data.3 & 0b_0100_0000 != 0,
 			x_flip: data.3 & 0b_0010_0000 != 0,
 			dmg_palette: data.3 & 0b_0001_0000 != 0,
-			// bank: data.3 & 0b_0000_1000 != 0,
-			// cgb_palette: data.3 & 0b_0000_0111,
 		}
 	}
 }
@@ -48,11 +44,7 @@ pub fn oam_scan(gb: &GB) -> Vec<Sprite> {
 			}
 		}
 	}
-
-	if !gb.bus.io.cgb_mode {
-		sprites.sort_by_key(|x| x.x);
-	}
-
+	sprites.sort_by_key(|x| x.x);
 	sprites
 }
 
@@ -80,8 +72,6 @@ pub fn render_dot(gb: &mut GB, lx: u64, sprites: &Vec<Sprite>) {
 	let wx = gb.bus.io.wx as usize;
 	let wy = gb.bus.io.wy as usize;
 
-	let vbank = gb.bus.vram[gb.bus.io.vbk as usize];
-
 	let map_pallete_index = if window_enable && wy <= lcd_y && wx <= lcd_x + 7 {
 		let win_y = lcd_y - wy;
 		let win_x = lcd_x + 7 - wx;
@@ -91,13 +81,13 @@ pub fn render_dot(gb: &mut GB, lx: u64, sprites: &Vec<Sprite>) {
 			_ => 0x1C00,
 		};
 
-		let mut itile = vbank[tile_map_area + ((win_x >> 3) + (win_y >> 3) * 32)] as usize;
+		let mut itile = gb.bus.vram[tile_map_area + ((win_x >> 3) + (win_y >> 3) * 32)] as usize;
 
 		if gb.bus.io.lcdc & 0b10000 == 0 && itile & 0x80 == 0 {
 			itile |= 0x100;
 		}
 
-		let tile_data = &vbank[itile * 16..itile * 16 + 16];
+		let tile_data = &gb.bus.vram[itile * 16..itile * 16 + 16];
 
 		let tile_x = win_x & 0b111;
 		let tile_y = win_y & 0b111;
@@ -120,13 +110,13 @@ pub fn render_dot(gb: &mut GB, lx: u64, sprites: &Vec<Sprite>) {
 			0 => 0x1800,
 			_ => 0x1C00,
 		};
-		let mut itile = vbank[tile_map_area + ((bg_x >> 3) + (bg_y >> 3) * 32)] as usize;
+		let mut itile = gb.bus.vram[tile_map_area + ((bg_x >> 3) + (bg_y >> 3) * 32)] as usize;
 
 		if gb.bus.io.lcdc & 0b10000 == 0 && itile & 0x80 == 0 {
 			itile |= 0x100;
 		}
 
-		let tile_data = &vbank[itile * 16..itile * 16 + 16];
+		let tile_data = &gb.bus.vram[itile * 16..itile * 16 + 16];
 
 		let tile_x = bg_x & 0b111;
 		let tile_y = bg_y & 0b111;
@@ -159,7 +149,7 @@ pub fn render_dot(gb: &mut GB, lx: u64, sprites: &Vec<Sprite>) {
 				s_x = 8 - 1 - s_x
 			}
 
-			let tile_data = &vbank[sprite.itile * 16..sprite.itile * 16 + 32];
+			let tile_data = &gb.bus.vram[sprite.itile * 16..sprite.itile * 16 + 32];
 
 			let b1 = (tile_data[s_y * 2 + 0] >> (7 - s_x)) & 1;
 			let b2 = (tile_data[s_y * 2 + 1] >> (7 - s_x)) & 1;

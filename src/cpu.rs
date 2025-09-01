@@ -276,9 +276,6 @@ pub fn cycle(gb: &mut GB) -> u64 {
 							(3, 5)
 						}
 						0b00_010_000 => {
-							if mem.io.speed_switch & 1 != 0 {
-								mem.io.speed_switch ^= 0x81; // zero low bit. flip high bit
-							}
 							cpu.halt = true; // TODO: might want to add more here
 							todo!("SPEED SWITCH");
 							// (2, 1)

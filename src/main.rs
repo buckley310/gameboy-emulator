@@ -142,7 +142,7 @@ fn main() {
 					gb.single_step = false;
 					gb.on_break = true;
 				}
-				dots_cpu += (mcycles << 2) >> (gb.bus.io.speed_switch >> 7);
+				dots_cpu += mcycles * 4;
 				if gb.bus.io.advance_counter_div(mcycles) {
 					gb.cpu.halt = false;
 				}

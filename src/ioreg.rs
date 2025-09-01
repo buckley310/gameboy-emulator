@@ -97,9 +97,6 @@ pub struct IoReg {
 	pub obp1: u8,
 	pub wy: u8,
 	pub wx: u8,
-	pub cgb_mode: bool,   //key0
-	pub speed_switch: u8, //key1
-	pub vbk: bool,
 	pub hide_boot_rom: bool,
 	pub ie: u8,
 
@@ -143,9 +140,6 @@ impl IoReg {
 			0xFF45 => self.lyc,
 			0xFF4a => self.wy,
 			0xFF4b => self.wx,
-			0xFF4c => (self.cgb_mode as u8) << 2,
-			0xFF4d => self.speed_switch,
-			// 0xFF4F => u8::from(self.vbk) | 254,
 			0xFF50 => self.hide_boot_rom as u8,
 			// 0xFF60 => 0xff,
 			0xFFFF => self.ie,
@@ -191,13 +185,6 @@ impl IoReg {
 			0xFF49 => self.obp1 = data,
 			0xFF4a => self.wy = data,
 			0xFF4b => self.wx = data,
-			0xFF4c => {
-				if !self.hide_boot_rom {
-					self.cgb_mode = data & 0b100 != 0;
-				}
-			}
-			0xFF4d => todo!("Prepare speed switch"),
-			// 0xFF4F => self.vbk = data & 1 != 0,
 			0xFF50 => {
 				if data & 1 == 1 {
 					self.hide_boot_rom = true;
