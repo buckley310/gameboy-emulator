@@ -1,6 +1,6 @@
 use std::io::Read;
 use std::sync::{Arc, Mutex};
-use std::thread::{sleep, spawn};
+use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 pub mod audio;
@@ -9,7 +9,6 @@ pub mod cart;
 pub mod cpu;
 pub mod ioreg;
 pub mod opcodes;
-pub mod repl;
 pub mod ui;
 pub mod verify;
 pub mod video;
@@ -18,9 +17,6 @@ pub struct GB {
 	bus: bus::Bus,
 	cpu: cpu::CPU,
 	framebuffer: [u8; 160 * 144 * 3],
-	breakpoints: Vec<u16>,
-	on_break: bool,
-	single_step: bool,
 }
 impl std::default::Default for GB {
 	fn default() -> GB {
@@ -28,9 +24,6 @@ impl std::default::Default for GB {
 			bus: bus::Bus::default(),
 			cpu: cpu::CPU::default(),
 			framebuffer: [30; 160 * 144 * 3],
-			breakpoints: vec![],
-			on_break: false,
-			single_step: false,
 		}
 	}
 }
@@ -57,7 +50,6 @@ fn main() {
 				match arg_char {
 					'c' => gb.cpu.debug = true,
 					'i' => gb.bus.io.debug = true,
-					'p' => gb.on_break = true,
 					'b' => gb.bus.cart.debug_bank_switch = true,
 					_ => panic!("Bad commandline flag: {arg}"),
 				}
@@ -78,13 +70,6 @@ fn main() {
 
 	let lgb = Arc::new(Mutex::new(gb));
 
-	{
-		let x = lgb.clone();
-		spawn(move || {
-			repl::go(x);
-		});
-	}
-
 	let start = Instant::now();
 	const DOTS_PER_SCANLINE: u64 = 456;
 	let mut sprites = vec![];
@@ -99,7 +84,7 @@ fn main() {
 
 		ui.draw(&mut gb, &mut play);
 
-		while play && !gb.on_break {
+		while play {
 			dots += 1;
 
 			// Advance screen
@@ -138,23 +123,11 @@ fn main() {
 			// Advance CPU
 			if dots_cpu < dots {
 				let mcycles = cpu::cycle(&mut gb);
-				if gb.single_step {
-					gb.single_step = false;
-					gb.on_break = true;
-				}
 				dots_cpu += mcycles * 4;
 				if gb.bus.io.advance_counter_div(mcycles) {
 					gb.cpu.halt = false;
 				}
-				if gb.breakpoints.contains(&gb.cpu.pc) {
-					gb.on_break = true;
-					println!("HIT BREAKPOINT {:x}", gb.cpu.pc);
-				}
 			}
-		}
-		if gb.on_break {
-			drop(gb);
-			sleep(Duration::from_millis(100));
 		}
 	}
 }
