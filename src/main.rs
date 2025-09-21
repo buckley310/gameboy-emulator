@@ -8,9 +8,7 @@ pub mod bus;
 pub mod cart;
 pub mod cpu;
 pub mod ioreg;
-pub mod opcodes;
 pub mod ui;
-pub mod verify;
 pub mod video;
 
 pub struct GB {

@@ -1,6 +1,5 @@
-use crate::bus;
-use crate::verify;
 use crate::GB;
+use crate::bus;
 
 #[derive(Default)]
 pub struct Flags {
@@ -28,7 +27,6 @@ pub struct CPU {
 
 	pub halt: bool,
 	pub debug: bool,
-	verify: verify::Verify,
 }
 impl CPU {
 	pub fn get_bc(&self) -> u16 {
@@ -88,11 +86,7 @@ fn get_r8(cpu: &CPU, mem: &bus::Bus, r8: u8) -> (u8, u64) {
 		7 => cpu.a,
 		_ => panic!("get_r8 bad register {r8}"),
 	};
-	if r8 == 6 {
-		(data, 1)
-	} else {
-		(data, 0)
-	}
+	if r8 == 6 { (data, 1) } else { (data, 0) }
 }
 
 fn set_r8(cpu: &mut CPU, mem: &mut bus::Bus, r8: u8, n: u8) -> u64 {
@@ -253,8 +247,10 @@ pub fn cycle(gb: &mut GB) -> u64 {
 
 	if cpu.debug {
 		println!(
-			"{cpu:>2x?} - {}",
-			cpu.verify.disasm([opcode, imm8, imm8_2]).0
+			"{cpu:>2x?} - {:x} {:x} {:x}",
+			mem.peek(cpu.pc.wrapping_add(0)),
+			mem.peek(cpu.pc.wrapping_add(1)),
+			mem.peek(cpu.pc.wrapping_add(2)),
 		);
 	}
 
@@ -950,8 +946,6 @@ pub fn cycle(gb: &mut GB) -> u64 {
 			}
 		}
 	};
-
-	cpu.verify.cycles(mcycles, (opcode, imm8));
 
 	if cpu.ime_soon {
 		cpu.ime = true;
