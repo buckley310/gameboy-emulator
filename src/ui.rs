@@ -4,7 +4,7 @@ use sdl3::{
 	EventPump,
 	event::Event,
 	keyboard::Keycode,
-	pixels::{Color, PixelFormat, PixelFormatEnum},
+	pixels::{Color, PixelFormat},
 	rect::Rect,
 	render::{Canvas, ScaleMode},
 	surface::Surface,
@@ -87,7 +87,7 @@ impl UI {
 		}
 	}
 	pub fn draw(&mut self, gb: &mut GB, play: &mut bool) {
-		let rgb24 = PixelFormat::from(PixelFormatEnum::RGB24);
+		let rgb24 = PixelFormat::RGB24;
 		let tex_c = self.canvas.texture_creator();
 
 		for event in self.event_pump.poll_iter() {
