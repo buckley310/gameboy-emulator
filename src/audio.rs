@@ -2,7 +2,7 @@ use raylib::prelude::*;
 use std::sync::{Arc, Mutex};
 
 const AUDIO_FREQ: u16 = 48_000;
-const VOLUME_DIAL: u8 = 50;
+const VOLUME_DIAL: f32 = 0.2;
 
 #[derive(Default)]
 struct Channel {
@@ -152,20 +152,20 @@ pub struct APU<'a> {
 impl<'a> APU<'a> {
 	pub fn new(device: &'a RaylibAudio) -> Self {
 		let audio_params = Arc::new(Mutex::new(AudioParams::default()));
-		let stream = device.new_audio_stream(AUDIO_FREQ as u32, 8, 1);
+		let stream = device.new_audio_stream(AUDIO_FREQ as u32, 32, 1);
+		stream.set_volume(VOLUME_DIAL);
 
 		let mut pcm_generator = PcmGenerator::new();
 
 		let audio_params_for_callback = audio_params.clone();
-		audio_stream_callback::set_audio_stream_callback(&stream, move |buf: &mut [u8]| {
+		audio_stream_callback::set_audio_stream_callback(&stream, move |buf: &mut [f32]| {
 			let mut p = audio_params_for_callback.lock().unwrap();
 			if p.channels[1].trigger {
 				pcm_generator.trigger(&mut p.channels[1]);
 			}
 			for out in buf.iter_mut() {
 				let c1 = pcm_generator.callback();
-				assert!(c1 >= -1.0 && c1 <= 1.0);
-				*out = ((c1 / 2.0 + 0.5) * (VOLUME_DIAL as f32)) as u8;
+				*out = c1;
 			}
 		})
 		.expect("error activating audio callback");
