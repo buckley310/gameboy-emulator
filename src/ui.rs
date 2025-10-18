@@ -1,58 +1,57 @@
-use crate::GB;
+use crate::{GB, bus};
+use raylib::prelude::*;
 
-use sdl3::{
-	EventPump,
-	event::Event,
-	keyboard::Keycode,
-	pixels::{Color, PixelFormat},
-	rect::Rect,
-	render::{Canvas, ScaleMode},
-	surface::Surface,
-	video::Window,
-};
+const CONTROLS: &[(bool, u8, KeyboardKey)] = &[
+	// (is_joypad, io_pin, keycode)
+	(false, 1, KeyboardKey::KEY_R),         // A
+	(false, 2, KeyboardKey::KEY_E),         // B
+	(false, 4, KeyboardKey::KEY_BACKSPACE), // SELECT
+	(false, 8, KeyboardKey::KEY_ENTER),     // START
+	(true, 1, KeyboardKey::KEY_L),          // RIGHT
+	(true, 2, KeyboardKey::KEY_J),          // LEFT
+	(true, 4, KeyboardKey::KEY_I),          // UP
+	(true, 8, KeyboardKey::KEY_K),          // DOWN
+];
 
-const BTN_PIN_A: u8 = 1 << 0;
-const BTN_PIN_B: u8 = 1 << 1;
-const BTN_PIN_SELECT: u8 = 1 << 2;
-const BTN_PIN_START: u8 = 1 << 3;
-const BTN_PIN_RIGHT: u8 = 1 << 0;
-const BTN_PIN_LEFT: u8 = 1 << 1;
-const BTN_PIN_UP: u8 = 1 << 2;
-const BTN_PIN_DOWN: u8 = 1 << 3;
+const VRAM_WIDTH: i32 = 32;
+const VRAM_HEIGHT: i32 = bus::VRAM_SIZE as i32 / VRAM_WIDTH;
 
-const BTN_KEYCODE_A: Keycode = Keycode::R;
-const BTN_KEYCODE_B: Keycode = Keycode::E;
-const BTN_KEYCODE_SELECT: Keycode = Keycode::Backspace;
-const BTN_KEYCODE_START: Keycode = Keycode::Return;
-const BTN_KEYCODE_RIGHT: Keycode = Keycode::L;
-const BTN_KEYCODE_LEFT: Keycode = Keycode::J;
-const BTN_KEYCODE_UP: Keycode = Keycode::I;
-const BTN_KEYCODE_DOWN: Keycode = Keycode::K;
+// 384 tiles. display 16 wide. each tile is 8x8
+const TILE_VIEWER_WIDTH: i32 = 8 * 16;
+const TILE_VIEWER_HEIGHT: i32 = 8 * 384 / 16;
 
 const PADDING: i32 = 10;
-const SCALE_MODE: ScaleMode = ScaleMode::Nearest;
 
 struct Layout {
 	x: i32,
 	y: i32,
+	col_w: i32,
 }
 impl Layout {
 	fn default() -> Layout {
 		Layout {
 			x: PADDING,
 			y: PADDING,
+			col_w: 0,
 		}
 	}
-	fn stack(&mut self, _w: i32, h: i32) -> (i32, i32) {
-		let r = (self.x, self.y);
-		self.y += h + PADDING;
-		r
+	fn stack(&mut self, w: i32, h: i32, scale: i32) -> Vector2 {
+		let (x, y) = (self.x, self.y);
+		self.col_w = self.col_w.max(w * scale);
+		self.y += h * scale + PADDING;
+		Vector2 {
+			x: x as f32,
+			y: y as f32,
+		}
 	}
-	fn end(&mut self, w: i32, _h: i32) -> (i32, i32) {
-		let r = (self.x, self.y);
-		self.y = PADDING;
-		self.x += w + PADDING;
-		r
+	fn next(&mut self, w: i32, h: i32, scale: i32) -> Vector2 {
+		self.y = h * scale + 2 * PADDING;
+		self.x += self.col_w + PADDING;
+		self.col_w = w * scale;
+		Vector2 {
+			x: self.x as f32,
+			y: PADDING as f32,
+		}
 	}
 }
 
@@ -62,178 +61,113 @@ fn color_dmg(n: u8, palette: u8) -> (u8, u8, u8) {
 	(c, c, c)
 }
 
+fn blank_tex(rl: &mut (RaylibHandle, RaylibThread), w: i32, h: i32) -> Texture2D {
+	let mut img = Image::gen_image_color(w, h, Color::BLACK);
+	img.set_format(PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8);
+	rl.0.load_texture_from_image(&rl.1, &img).unwrap()
+}
+
+struct GbTextures {
+	fb: Texture2D,
+	mem: Texture2D,
+	bg: Texture2D,
+	win: Texture2D,
+	tile: Texture2D,
+	vram: Texture2D,
+}
+
 pub struct UI {
-	canvas: Canvas<Window>,
-	event_pump: EventPump,
+	rl: (RaylibHandle, RaylibThread),
+	tex: GbTextures,
 	frame_number: u64,
 }
 impl UI {
 	pub fn default() -> UI {
-		let sdl_context = sdl3::init().unwrap();
-		let video_subsystem = sdl_context.video().unwrap();
-
-		let window = video_subsystem
-			.window("gb", 1920, 1080)
-			.position_centered()
-			.build()
-			.unwrap();
-
-		let canvas = window.into_canvas();
-
+		let mut rl = raylib::init().size(1920, 1080).build();
+		let tex = GbTextures {
+			fb: blank_tex(&mut rl, 160, 144),
+			mem: blank_tex(&mut rl, 256, 256),
+			bg: blank_tex(&mut rl, 256, 256),
+			win: blank_tex(&mut rl, 256, 256),
+			tile: blank_tex(&mut rl, TILE_VIEWER_WIDTH, TILE_VIEWER_HEIGHT),
+			vram: blank_tex(&mut rl, VRAM_WIDTH, VRAM_HEIGHT),
+		};
 		UI {
-			canvas,
+			rl,
+			tex,
 			frame_number: 0,
-			event_pump: sdl_context.event_pump().unwrap(),
 		}
 	}
 	pub fn draw(&mut self, gb: &mut GB, play: &mut bool) {
-		let rgb24 = PixelFormat::RGB24;
-		let tex_c = self.canvas.texture_creator();
+		if self.rl.0.window_should_close() {
+			*play = false
+		}
 
-		for event in self.event_pump.poll_iter() {
-			match event {
-				Event::Quit { .. } => {
-					*play = false;
-				}
-				Event::KeyDown {
-					keycode: Some(keycode),
-					..
-				} => match keycode {
-					BTN_KEYCODE_START => gb.bus.io.user_input_buttons |= BTN_PIN_START,
-					BTN_KEYCODE_SELECT => gb.bus.io.user_input_buttons |= BTN_PIN_SELECT,
-					BTN_KEYCODE_A => gb.bus.io.user_input_buttons |= BTN_PIN_A,
-					BTN_KEYCODE_B => gb.bus.io.user_input_buttons |= BTN_PIN_B,
-					BTN_KEYCODE_RIGHT => gb.bus.io.user_input_joypad |= BTN_PIN_RIGHT,
-					BTN_KEYCODE_DOWN => gb.bus.io.user_input_joypad |= BTN_PIN_DOWN,
-					BTN_KEYCODE_LEFT => gb.bus.io.user_input_joypad |= BTN_PIN_LEFT,
-					BTN_KEYCODE_UP => gb.bus.io.user_input_joypad |= BTN_PIN_UP,
-					_ => {}
-				},
-				Event::KeyUp {
-					keycode: Some(keycode),
-					..
-				} => match keycode {
-					BTN_KEYCODE_START => gb.bus.io.user_input_buttons &= !BTN_PIN_START,
-					BTN_KEYCODE_SELECT => gb.bus.io.user_input_buttons &= !BTN_PIN_SELECT,
-					BTN_KEYCODE_A => gb.bus.io.user_input_buttons &= !BTN_PIN_A,
-					BTN_KEYCODE_B => gb.bus.io.user_input_buttons &= !BTN_PIN_B,
-					BTN_KEYCODE_RIGHT => gb.bus.io.user_input_joypad &= !BTN_PIN_RIGHT,
-					BTN_KEYCODE_DOWN => gb.bus.io.user_input_joypad &= !BTN_PIN_DOWN,
-					BTN_KEYCODE_LEFT => gb.bus.io.user_input_joypad &= !BTN_PIN_LEFT,
-					BTN_KEYCODE_UP => gb.bus.io.user_input_joypad &= !BTN_PIN_UP,
-					_ => {}
-				},
-				_ => {}
+		for (is_joypad, io_pin, keycode) in CONTROLS {
+			let target = if *is_joypad {
+				&mut gb.bus.io.user_input_joypad
+			} else {
+				&mut gb.bus.io.user_input_buttons
+			};
+			if self.rl.0.is_key_down(*keycode) {
+				*target |= io_pin
+			} else {
+				*target &= !io_pin
 			}
 		}
 
-		self.canvas.set_draw_color(Color::RGB(0x80, 0x80, 0x80));
-		self.canvas.clear();
+		self.tex.fb.update_texture(&gb.framebuffer).unwrap();
+		self.tex.mem.update_texture(&mem_dump(&gb.bus)).unwrap();
+		self.tex.bg.update_texture(&bg_map(&gb.bus)).unwrap();
+		self.tex.win.update_texture(&window_map(&gb.bus)).unwrap();
+		self.tex.tile.update_texture(&tile_dump(&gb.bus)).unwrap();
+		self.tex.vram.update_texture(&vram_dump(&gb.bus)).unwrap();
 
 		let mut l = Layout::default();
-
-		{
-			let w = 160;
-			let h = 144;
-
-			let (x, y) = l.stack(w as i32 * 3, h as i32 * 3);
-
-			let mut framebuffer = gb.framebuffer.clone();
-			let surf = Surface::from_data(framebuffer.as_mut(), w, h, w * 3, rgb24).unwrap();
-
-			let mut tex = surf.as_texture(&tex_c).unwrap();
-			tex.set_scale_mode(SCALE_MODE);
-			self.canvas
-				.copy(&tex, None, Rect::new(x, y, w * 3, h * 3))
-				.unwrap();
-		}
-
-		{
-			let mut img = mem_dump(&gb.bus);
-
-			let w = img.1;
-			let h = img.2;
-
-			let (x, y) = l.end(w as i32 * 2, h as i32 * 2);
-
-			let surf = Surface::from_data(img.0.as_mut(), w, h, w * 3, rgb24).unwrap();
-
-			let mut tex = surf.as_texture(&tex_c).unwrap();
-			tex.set_scale_mode(SCALE_MODE);
-			self.canvas
-				.copy(&tex, None, Rect::new(x, y, w * 2, h * 2))
-				.unwrap();
-		}
-
-		{
-			let mut img = bg_map(&gb.bus);
-
-			let w = img.1;
-			let h = img.2;
-
-			let (x, y) = l.stack(w as i32 * 2, h as i32 * 2);
-
-			let surf = Surface::from_data(img.0.as_mut(), w, h, w * 3, rgb24).unwrap();
-
-			let mut tex = surf.as_texture(&tex_c).unwrap();
-			tex.set_scale_mode(SCALE_MODE);
-			self.canvas
-				.copy(&tex, None, Rect::new(x, y, w * 2, h * 2))
-				.unwrap();
-		}
-
-		{
-			let mut img = window_map(&gb.bus);
-
-			let w = img.1;
-			let h = img.2;
-
-			let (x, y) = l.end(w as i32 * 2, h as i32 * 2);
-
-			let surf = Surface::from_data(img.0.as_mut(), w, h, w * 3, rgb24).unwrap();
-
-			let mut tex = surf.as_texture(&tex_c).unwrap();
-			tex.set_scale_mode(SCALE_MODE);
-			self.canvas
-				.copy(&tex, None, Rect::new(x, y, w * 2, h * 2))
-				.unwrap();
-		}
-
-		{
-			let mut img = tile_dump(&gb.bus);
-
-			let w = img.1;
-			let h = img.2;
-
-			let (x, y) = l.end(w as i32 * 3, h as i32 * 3);
-
-			let surf = Surface::from_data(img.0.as_mut(), w, h, w * 3, rgb24).unwrap();
-
-			let mut tex = surf.as_texture(&tex_c).unwrap();
-			tex.set_scale_mode(SCALE_MODE);
-			self.canvas
-				.copy(&tex, None, Rect::new(x, y, w * 3, h * 3))
-				.unwrap();
-		}
-
-		{
-			let mut img = vram_dump(&gb.bus);
-
-			let w = img.1;
-			let h = img.2;
-
-			let (x, y) = l.end(w as i32 * 3, h as i32 * 3);
-
-			let surf = Surface::from_data(img.0.as_mut(), w, h, w * 3, rgb24).unwrap();
-
-			let mut tex = surf.as_texture(&tex_c).unwrap();
-			tex.set_scale_mode(SCALE_MODE);
-			self.canvas
-				.copy(&tex, None, Rect::new(x, y, w * 3, h * 3))
-				.unwrap();
-		}
-
-		self.canvas.present();
+		let mut d = self.rl.0.begin_drawing(&self.rl.1);
+		d.clear_background(Color::GRAY);
+		d.draw_texture_ex(
+			&self.tex.bg,
+			l.stack(self.tex.bg.width, self.tex.bg.height, 2),
+			0.0,
+			2.0,
+			Color::WHITE,
+		);
+		d.draw_texture_ex(
+			&self.tex.win,
+			l.stack(self.tex.win.width, self.tex.win.height, 2),
+			0.0,
+			2.0,
+			Color::WHITE,
+		);
+		d.draw_texture_ex(
+			&self.tex.mem,
+			l.next(self.tex.mem.width, self.tex.mem.height, 2),
+			0.0,
+			2.0,
+			Color::WHITE,
+		);
+		d.draw_texture_ex(
+			&self.tex.fb,
+			l.stack(self.tex.fb.width, self.tex.fb.height, 3),
+			0.0,
+			3.0,
+			Color::WHITE,
+		);
+		d.draw_texture_ex(
+			&self.tex.tile,
+			l.next(self.tex.tile.width, self.tex.tile.height, 3),
+			0.0,
+			3.0,
+			Color::WHITE,
+		);
+		d.draw_texture_ex(
+			&self.tex.vram,
+			l.next(self.tex.vram.width, self.tex.vram.height, 3),
+			0.0,
+			3.0,
+			Color::WHITE,
+		);
 
 		self.frame_number += 1;
 	}
@@ -263,7 +197,7 @@ fn draw_tile(
 	}
 }
 
-fn window_map(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
+fn window_map(mem: &crate::bus::Bus) -> Box<[u8]> {
 	let mut img = Box::new([0; 256 * 256 * 3]);
 
 	for x in 0..32 {
@@ -285,10 +219,10 @@ fn window_map(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 		}
 	}
 
-	(img, 256, 256)
+	img
 }
 
-fn bg_map(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
+fn bg_map(mem: &crate::bus::Bus) -> Box<[u8]> {
 	let mut img = Box::new([0; 256 * 256 * 3]);
 
 	for x in 0..32 {
@@ -310,50 +244,44 @@ fn bg_map(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 		}
 	}
 
-	(img, 256, 256)
+	img
 }
 
-fn tile_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
-	const TILE_SIZE: usize = 8;
-	const OUTPUT_WIDTH_IN_TILES: usize = 16;
-	const OUTPUT_HEIGHT_IN_TILES: usize = 384 / OUTPUT_WIDTH_IN_TILES;
-	const OUTPUT_WIDTH: usize = OUTPUT_WIDTH_IN_TILES * TILE_SIZE;
-	const OUTPUT_HEIGHT: usize = OUTPUT_HEIGHT_IN_TILES * TILE_SIZE;
+fn tile_dump(mem: &crate::bus::Bus) -> Box<[u8]> {
+	const OUTPUT_WIDTH_IN_TILES: i32 = TILE_VIEWER_WIDTH / 8;
 
-	let mut img = Box::new([0; OUTPUT_WIDTH * OUTPUT_HEIGHT * 3]);
+	let mut img = Box::new([0; (TILE_VIEWER_WIDTH * TILE_VIEWER_HEIGHT * 3) as usize]);
 
 	for itile in 0..384 {
 		draw_tile(
 			itile,
 			img.as_mut(),
-			(itile % OUTPUT_WIDTH_IN_TILES * 8) + (itile / OUTPUT_WIDTH_IN_TILES * 8 * 8 * 16),
-			OUTPUT_WIDTH,
+			(itile % OUTPUT_WIDTH_IN_TILES as usize * 8)
+				+ (itile / OUTPUT_WIDTH_IN_TILES as usize * 8 * 8 * 16),
+			TILE_VIEWER_WIDTH as usize,
 			&mem.vram,
 			0b_11_10_01_00,
 			false,
 		);
 	}
 
-	(img, OUTPUT_WIDTH as u32, OUTPUT_HEIGHT as u32)
+	img
 }
 
-fn vram_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
-	const W: usize = 32;
-	const H: usize = 0x2000 / W;
+fn vram_dump(mem: &crate::bus::Bus) -> Box<[u8]> {
+	let mut img = Box::new([0; bus::VRAM_SIZE * 3]);
 
-	let mut img = Box::new([0; W * H * 3]);
-
-	for i in 0..(W * H) {
+	for i in 0..bus::VRAM_SIZE {
 		let c = mem.vram[i];
 		img[3 * i + 0] = c;
 		img[3 * i + 1] = c;
 		img[3 * i + 2] = c;
 	}
 
-	(img, W as u32, H as u32)
+	img
 }
 
-fn mem_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
+fn mem_dump(mem: &crate::bus::Bus) -> Box<[u8]> {
 	let mut img = Box::new([0; 0x10000 * 3]);
 	for i in 0x0000..=0xFFFF {
 		let byte = match i {
@@ -367,5 +295,5 @@ fn mem_dump(mem: &crate::bus::Bus) -> (Box<[u8]>, u32, u32) {
 		img[3 * (i as usize) + 1] = byte;
 		img[3 * (i as usize) + 2] = byte;
 	}
-	(img, 256, 0x10000 / 256)
+	img
 }

@@ -1,8 +1,8 @@
 use crate::cart::Cartridge;
 use crate::ioreg::IoReg;
 
-const VRAM_SIZE: usize = 0x2000;
-const WRAM_SIZE: usize = 0x2000;
+pub const VRAM_SIZE: usize = 0x2000;
+pub const WRAM_SIZE: usize = 0x2000;
 
 const BOOT_ROM: [u8; 0x100] = [
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

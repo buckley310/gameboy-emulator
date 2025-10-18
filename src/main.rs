@@ -36,9 +36,9 @@ fn main() {
 	let mut gb = GB::default();
 	let mut rom: Vec<u8> = vec![];
 
-	let apu = audio::APU::default();
+	let audio_device = audio::init_audio();
+	let apu = audio::APU::new(&audio_device);
 	gb.bus.io.audio_params = apu.audio_params;
-	apu.device.resume().unwrap();
 
 	let argv: Vec<String> = std::env::args().collect();
 	for arg in &argv[1..] {

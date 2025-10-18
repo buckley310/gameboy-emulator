@@ -1,4 +1,4 @@
-use sdl3::audio::{AudioCallback, AudioFormat, AudioSpec, AudioStream, AudioStreamWithCallback};
+use raylib::prelude::*;
 use std::sync::{Arc, Mutex};
 
 const AUDIO_FREQ: u16 = 48_000;
@@ -99,10 +99,7 @@ impl PcmGenerator {
 			c2_env_direction: false,
 		}
 	}
-}
-impl AudioCallback<f32> for PcmGenerator {
-	fn callback(&mut self, stream: &mut AudioStream, requested: i32) {
-		let mut out = Vec::<f32>::with_capacity(requested as usize);
+	fn callback(&mut self, buf: &mut [u8]) {
 		fn from_ticks(tick_hz: usize, n: usize) -> usize {
 			(AUDIO_FREQ as usize) * n / tick_hz
 		}
@@ -124,7 +121,7 @@ impl AudioCallback<f32> for PcmGenerator {
 				_ => panic!(),
 			};
 		}
-		for _ in 0..requested {
+		for out in buf.iter_mut() {
 			if self.c2_env_high != 0 {
 				self.c2_env = self.c2_env.saturating_sub(1);
 				if self.c2_env == 0 {
@@ -140,37 +137,43 @@ impl AudioCallback<f32> for PcmGenerator {
 				self.c2_phase = self.c2_freq;
 			}
 			let magnitude = (self.c2_volume as f32) / 256.0 * MASTER_VOLUME;
-			out.push(if self.c2_phase < self.c2_freq_low {
-				-magnitude
+			*out = if self.c2_phase < self.c2_freq_low {
+				128 - (magnitude * 127.0) as u8
 			} else {
-				magnitude
-			});
+				128 + (magnitude * 127.0) as u8
+			};
 		}
-		stream.put_data_f32(&out).unwrap();
 	}
 }
 
-pub struct APU {
-	pub audio_params: Arc<Mutex<AudioParams>>,
-	pub device: AudioStreamWithCallback<PcmGenerator>,
+pub fn init_audio() -> RaylibAudio {
+	RaylibAudio::init_audio_device().expect("audio init failed")
 }
-impl std::default::Default for APU {
-	fn default() -> Self {
+
+pub struct APU<'a> {
+	pub audio_params: Arc<Mutex<AudioParams>>,
+
+	// Keep the stream around. It closes if it goes out of scope.
+	#[allow(dead_code)]
+	audio_stream: AudioStream<'a>,
+}
+impl<'a> APU<'a> {
+	pub fn new(device: &'a RaylibAudio) -> Self {
 		let audio_params = Arc::new(Mutex::new(AudioParams::default()));
-		let sdl_context = sdl3::init().unwrap();
-		let audio_subsystem = sdl_context.audio().unwrap();
-		// TODO: increase frequency of callback
-		let desired_spec = AudioSpec {
-			freq: Some(AUDIO_FREQ as i32),
-			channels: Some(1),
-			format: Some(AudioFormat::f32_sys()),
-		};
-		let device = audio_subsystem
-			.open_playback_stream(&desired_spec, PcmGenerator::new(audio_params.clone()))
-			.unwrap();
+		let stream = device.new_audio_stream(AUDIO_FREQ as u32, 8, 1);
+
+		let mut pcm_generator = PcmGenerator::new(audio_params.clone());
+
+		audio_stream_callback::set_audio_stream_callback(&stream, move |buf: &mut [u8]| {
+			pcm_generator.callback(buf);
+		})
+		.expect("error activating audio callback");
+
+		stream.play();
+
 		Self {
 			audio_params,
-			device,
+			audio_stream: stream,
 		}
 	}
 }
