@@ -202,7 +202,7 @@ impl<'a> APU<'a> {
 				if c2_is_low { i16::MIN } else { i16::MAX }
 			};
 
-			self.ring.add(c2 >> 4);
+			self.ring.add(c2 / 4);
 			if self.audio_stream.is_processed() {
 				self.audio_stream
 					.update(&self.ring.take(AUDIO_BUFFER_SIZE))
