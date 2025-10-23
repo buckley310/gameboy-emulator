@@ -1,17 +1,36 @@
+use crate::{DOTS_HZ, GB};
 use raylib::prelude::*;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicI16, AtomicUsize};
 
 const AUDIO_FREQ: u16 = 48_000;
-const MASTER_VOLUME: f32 = 0.2;
+const VOLUME_DIAL: f32 = 0.25;
 
 #[derive(Default)]
 struct Channel {
-	sweep: u8,     // NRx0
-	length: u8,    // NRx1
-	volume: u8,    // NRx2
-	frequency: u8, // NRx3
-	control: u8,   // NRx4
+	// 	sweep: u8,     // NRx0
+	// 	length: u8,    // NRx1
+	// 	volume: u8,    // NRx2
+	// 	frequency: u8, // NRx3
+	// 	control: u8,   // NRx4
+	nr: [u8; 5],
 	trigger: bool,
+}
+impl Channel {
+	// fn get_trigger(&self) -> bool {
+	// 	self.nr[4] & 0b1000_0000 != 0
+	// }
+	// fn get_length_enable(&self) -> bool {
+	// 	todo!("check this");
+	// 	self.nr[4] & 0b0100_0000 != 0
+	// }
+	fn get_period(&self) -> usize {
+		(self.nr[3] as usize) | ((self.nr[4] as usize & 0b111) << 8)
+	}
+	fn get_pulse_duty_cycle(&self) -> u8 {
+		self.nr[1] >> 6
+	}
 }
 
 #[derive(Default)]
@@ -25,42 +44,42 @@ pub struct AudioParams {
 impl AudioParams {
 	pub fn set(&mut self, addr: usize, data: u8) {
 		match addr {
-			0xFF10 => self.channels[0].sweep = data,
-			0xFF11 => self.channels[0].length = data,
-			0xFF12 => self.channels[0].volume = data,
-			0xFF13 => self.channels[0].frequency = data,
+			0xFF10 => self.channels[0].nr[0] = data,
+			0xFF11 => self.channels[0].nr[1] = data,
+			0xFF12 => self.channels[0].nr[2] = data,
+			0xFF13 => self.channels[0].nr[3] = data,
 			0xFF14 => {
-				self.channels[0].control = data;
+				self.channels[0].nr[4] = data;
 				if data & (1 << 7) != 0 {
 					self.channels[0].trigger = true;
 				}
 			}
-			0xFF15 => self.channels[1].sweep = data,
-			0xFF16 => self.channels[1].length = data,
-			0xFF17 => self.channels[1].volume = data,
-			0xFF18 => self.channels[1].frequency = data,
+			0xFF15 => self.channels[1].nr[0] = data,
+			0xFF16 => self.channels[1].nr[1] = data,
+			0xFF17 => self.channels[1].nr[2] = data,
+			0xFF18 => self.channels[1].nr[3] = data,
 			0xFF19 => {
-				self.channels[1].control = data;
+				self.channels[1].nr[4] = data;
 				if data & (1 << 7) != 0 {
 					self.channels[1].trigger = true;
 				}
 			}
-			0xFF1A => self.channels[2].sweep = data,
-			0xFF1B => self.channels[2].length = data,
-			0xFF1C => self.channels[2].volume = data,
-			0xFF1D => self.channels[2].frequency = data,
+			0xFF1A => self.channels[2].nr[0] = data,
+			0xFF1B => self.channels[2].nr[1] = data,
+			0xFF1C => self.channels[2].nr[2] = data,
+			0xFF1D => self.channels[2].nr[3] = data,
 			0xFF1E => {
-				self.channels[2].control = data;
+				self.channels[2].nr[4] = data;
 				if data & (1 << 7) != 0 {
 					self.channels[2].trigger = true;
 				}
 			}
-			0xFF1F => self.channels[3].sweep = data,
-			0xFF20 => self.channels[3].length = data,
-			0xFF21 => self.channels[3].volume = data,
-			0xFF22 => self.channels[3].frequency = data,
+			0xFF1F => self.channels[3].nr[0] = data,
+			0xFF20 => self.channels[3].nr[1] = data,
+			0xFF21 => self.channels[3].nr[2] = data,
+			0xFF22 => self.channels[3].nr[3] = data,
 			0xFF23 => {
-				self.channels[3].control = data;
+				self.channels[3].nr[4] = data;
 				if data & (1 << 7) != 0 {
 					self.channels[3].trigger = true;
 				}
@@ -74,84 +93,60 @@ impl AudioParams {
 	}
 }
 
-pub struct PcmGenerator {
-	audio_params: Arc<Mutex<AudioParams>>,
-
-	c2_freq: usize,
-	c2_freq_low: usize,
-	c2_phase: usize,
-	c2_volume: u8,
-	c2_env: usize,
-	c2_env_high: usize,
-	c2_env_direction: bool,
-}
-impl PcmGenerator {
-	fn new(audio_params: Arc<Mutex<AudioParams>>) -> Self {
-		PcmGenerator {
-			audio_params,
-
-			c2_freq: 0,
-			c2_freq_low: 0,
-			c2_phase: 0,
-			c2_volume: 0,
-			c2_env: 0,
-			c2_env_high: 0,
-			c2_env_direction: false,
-		}
-	}
-	fn callback(&mut self, buf: &mut [u8]) {
-		fn from_ticks(tick_hz: usize, n: usize) -> usize {
-			(AUDIO_FREQ as usize) * n / tick_hz
-		}
-		let mut audio_params = self.audio_params.lock().unwrap();
-		if audio_params.channels[1].trigger {
-			audio_params.channels[1].trigger = false;
-			self.c2_env_high = from_ticks(64, audio_params.channels[1].volume as usize & 7);
-			self.c2_env = self.c2_env_high;
-			self.c2_env_direction = audio_params.channels[1].volume & 8 != 0;
-			self.c2_volume = audio_params.channels[1].volume & 0xF0;
-			let period = (audio_params.channels[1].frequency as usize)
-				| ((audio_params.channels[1].control as usize & 0b111) << 8);
-			self.c2_freq = from_ticks(1 << 17, (1 << 11) - period);
-			self.c2_freq_low = match audio_params.channels[1].length >> 6 {
-				0 => self.c2_freq >> 3,
-				1 => self.c2_freq >> 2,
-				2 => self.c2_freq >> 1,
-				3 => (self.c2_freq >> 2) * 3,
-				_ => panic!(),
-			};
-		}
-		for out in buf.iter_mut() {
-			if self.c2_env_high != 0 {
-				self.c2_env = self.c2_env.saturating_sub(1);
-				if self.c2_env == 0 {
-					self.c2_env = self.c2_env_high;
-					self.c2_volume = match self.c2_env_direction {
-						true => self.c2_volume.saturating_add(0x10),
-						false => self.c2_volume.saturating_sub(0x10),
-					};
-				}
-			}
-			self.c2_phase = self.c2_phase.saturating_sub(1);
-			if self.c2_phase == 0 {
-				self.c2_phase = self.c2_freq;
-			}
-			let magnitude = (self.c2_volume as f32) / 256.0 * MASTER_VOLUME;
-			*out = if self.c2_phase < self.c2_freq_low {
-				128 - (magnitude * 127.0) as u8
-			} else {
-				128 + (magnitude * 127.0) as u8
-			};
-		}
-	}
-}
-
 pub fn init_audio() -> RaylibAudio {
 	RaylibAudio::init_audio_device().expect("audio init failed")
 }
 
+struct AudioBuffer {
+	head: AtomicUsize,
+	tail: AtomicUsize,
+	buf: Vec<AtomicI16>,
+}
+impl AudioBuffer {
+	fn new() -> Self {
+		let mut buf = Vec::new();
+		buf.reserve_exact(0xffff + 1);
+		for _ in 0..=0xffff {
+			buf.push(AtomicI16::new(0))
+		}
+		Self {
+			head: AtomicUsize::new(0),
+			tail: AtomicUsize::new(0),
+			buf: buf,
+		}
+	}
+	fn add(&self, val: i16) {
+		let ofs = self.head.fetch_add(1, Ordering::SeqCst);
+		self.buf[ofs & 0xffff].store(val, Ordering::SeqCst);
+	}
+	fn take(&self, size: usize) -> Vec<i16> {
+		let mut dest = Vec::new();
+		dest.reserve_exact(size);
+		let ofs = self.tail.fetch_add(size, Ordering::SeqCst) & 0xffff;
+		if ofs + size <= 0xffff + 1 {
+			for x in &self.buf[ofs..ofs + size] {
+				dest.push(x.load(Ordering::SeqCst));
+			}
+		} else {
+			for x in &self.buf[ofs..] {
+				dest.push(x.load(Ordering::SeqCst));
+			}
+			for x in &self.buf[..size - dest.len()] {
+				dest.push(x.load(Ordering::SeqCst));
+			}
+		}
+		assert!(dest.len() == size);
+		dest
+	}
+}
+
 pub struct APU<'a> {
-	pub audio_params: Arc<Mutex<AudioParams>>,
+	ring: Arc<AudioBuffer>,
+	next_sample: u64,
+	sample_number: u64,
+
+	pulse2_period_div: usize,
+	pulse2_current_sample: u8,
 
 	// Keep the stream around. It closes if it goes out of scope.
 	#[allow(dead_code)]
@@ -159,21 +154,65 @@ pub struct APU<'a> {
 }
 impl<'a> APU<'a> {
 	pub fn new(device: &'a RaylibAudio) -> Self {
-		let audio_params = Arc::new(Mutex::new(AudioParams::default()));
-		let stream = device.new_audio_stream(AUDIO_FREQ as u32, 8, 1);
-
-		let mut pcm_generator = PcmGenerator::new(audio_params.clone());
-
-		audio_stream_callback::set_audio_stream_callback(&stream, move |buf: &mut [u8]| {
-			pcm_generator.callback(buf);
+		let stream = device.new_audio_stream(AUDIO_FREQ as u32, 16, 1);
+		let ring = Arc::new(AudioBuffer::new());
+		let ring_cb = ring.clone();
+		audio_stream_callback::set_audio_stream_callback(&stream, move |buf: &mut [i16]| {
+			let taken = ring_cb.take(buf.len());
+			for i in 0..buf.len() {
+				buf[i] = taken[i];
+			}
+			// for x in buf.iter() {
+			// 	print!("{}", if *x > 0 { "!" } else { " " })
+			// }
+			// println!("{buf:?}");
 		})
 		.expect("error activating audio callback");
 
+		stream.set_volume(VOLUME_DIAL);
 		stream.play();
 
 		Self {
-			audio_params,
+			ring,
+			next_sample: 0,
+			sample_number: 0,
+			pulse2_period_div: 0,
+			pulse2_current_sample: 0,
+
 			audio_stream: stream,
+		}
+	}
+	pub fn tick(&mut self, gb: &mut GB, dots: u64) {
+		// Pulse 2 Channel
+		if dots & 0b11 == 0 {
+			self.pulse2_period_div += 1;
+			if self.pulse2_period_div >= 0x800 {
+				self.pulse2_current_sample += 1;
+				self.pulse2_current_sample &= 7;
+				self.pulse2_period_div = gb.bus.io.audio_params.channels[1].get_period();
+			}
+		}
+
+		if dots > self.next_sample {
+			self.sample_number += 1;
+
+			self.next_sample = (
+				// TODO: check if u128 is needed, or if u64 is enough.
+				// Will { sample_number*DOTS_HZ } ever overflow a u64?
+				self.sample_number as u128 * DOTS_HZ as u128 / AUDIO_FREQ as u128
+			) as u64;
+
+			let c2 = {
+				let c2_is_low = match gb.bus.io.audio_params.channels[1].get_pulse_duty_cycle() {
+					0 => self.pulse2_current_sample == 0,
+					1 => self.pulse2_current_sample <= 1,
+					2 => self.pulse2_current_sample <= 3,
+					_ => self.pulse2_current_sample <= 5,
+				};
+				if c2_is_low { i16::MIN } else { i16::MAX }
+			};
+
+			self.ring.add(c2 >> 4);
 		}
 	}
 }

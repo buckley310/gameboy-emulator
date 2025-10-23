@@ -1,5 +1,4 @@
 use crate::audio::AudioParams;
-use std::sync::{Arc, Mutex};
 
 pub const INT_VBLANK: u8 = 1;
 pub const INT_LCD: u8 = 2;
@@ -100,7 +99,7 @@ pub struct IoReg {
 	pub hide_boot_rom: bool,
 	pub ie: u8,
 
-	pub audio_params: Arc<Mutex<AudioParams>>,
+	pub audio_params: AudioParams,
 
 	// other
 	pub joyc: bool, // not documented in pandocs
@@ -164,7 +163,7 @@ impl IoReg {
 			0xFF06 => self.tma = data,
 			0xFF07 => self.tac = data,
 			0xFF0F => self.interrupt = data,
-			0xFF10..=0xFF3F => self.audio_params.lock().unwrap().set(addr, data),
+			0xFF10..=0xFF3F => self.audio_params.set(addr, data),
 			0xFF40 => {
 				if data & 0x80 == 0 {
 					self.lx = 0;

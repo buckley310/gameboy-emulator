@@ -11,6 +11,8 @@ pub mod ioreg;
 pub mod ui;
 pub mod video;
 
+const DOTS_HZ: u32 = 1 << 22;
+
 pub struct GB {
 	bus: bus::Bus,
 	cpu: cpu::CPU,
@@ -27,7 +29,6 @@ impl std::default::Default for GB {
 }
 
 fn slow_down(real_elapsed: Duration, elapsed_dots: u64) {
-	const DOTS_HZ: u32 = 1 << 22;
 	let ingame_elapsed = Duration::from_secs(elapsed_dots) / DOTS_HZ;
 	sleep(ingame_elapsed.saturating_sub(real_elapsed));
 }
@@ -37,8 +38,7 @@ fn main() {
 	let mut rom: Vec<u8> = vec![];
 
 	let audio_device = audio::init_audio();
-	let apu = audio::APU::new(&audio_device);
-	gb.bus.io.audio_params = apu.audio_params;
+	let mut apu = audio::APU::new(&audio_device);
 
 	let argv: Vec<String> = std::env::args().collect();
 	for arg in &argv[1..] {
@@ -117,6 +117,8 @@ fn main() {
 				// if lcd is off, break "sometimes" to draw
 				break;
 			}
+
+			apu.tick(&mut gb, dots);
 
 			// Advance CPU
 			if dots_cpu < dots {
