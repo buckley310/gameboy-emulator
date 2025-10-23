@@ -1,8 +1,5 @@
 use crate::{DOTS_HZ, GB};
 use raylib::prelude::*;
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
-use std::sync::atomic::{AtomicI16, AtomicUsize};
 
 const AUDIO_FREQ: u16 = 48_000;
 const VOLUME_DIAL: f32 = 0.25;
@@ -101,41 +98,43 @@ pub fn init_audio() -> RaylibAudio {
 }
 
 struct AudioBuffer {
-	head: AtomicUsize,
-	tail: AtomicUsize,
-	buf: Vec<AtomicI16>,
+	head: usize,
+	tail: usize,
+	buf: Vec<i16>,
 }
 impl AudioBuffer {
 	fn new() -> Self {
 		let mut buf = Vec::new();
 		buf.reserve_exact(0xffff + 1);
 		for _ in 0..=0xffff {
-			buf.push(AtomicI16::new(0))
+			buf.push(0)
 		}
 		Self {
-			head: AtomicUsize::new(0),
-			tail: AtomicUsize::new(0),
+			head: 0,
+			tail: 0,
 			buf: buf,
 		}
 	}
-	fn add(&self, val: i16) {
-		let ofs = self.head.fetch_add(1, Ordering::SeqCst);
-		self.buf[ofs & 0xffff].store(val, Ordering::SeqCst);
+	fn add(&mut self, val: i16) {
+		let ofs = self.head;
+		self.head += 1;
+		self.buf[ofs & 0xffff] = val;
 	}
-	fn take(&self, size: usize) -> Vec<i16> {
+	fn take(&mut self, size: usize) -> Vec<i16> {
 		let mut dest = Vec::new();
 		dest.reserve_exact(size);
-		let ofs = self.tail.fetch_add(size, Ordering::SeqCst) & 0xffff;
+		let ofs = self.tail & 0xffff;
+		self.tail += size;
 		if ofs + size <= 0xffff + 1 {
 			for x in &self.buf[ofs..ofs + size] {
-				dest.push(x.load(Ordering::SeqCst));
+				dest.push(*x);
 			}
 		} else {
 			for x in &self.buf[ofs..] {
-				dest.push(x.load(Ordering::SeqCst));
+				dest.push(*x);
 			}
 			for x in &self.buf[..size - dest.len()] {
-				dest.push(x.load(Ordering::SeqCst));
+				dest.push(*x);
 			}
 		}
 		assert!(dest.len() == size);
@@ -144,7 +143,7 @@ impl AudioBuffer {
 }
 
 pub struct APU<'a> {
-	ring: Arc<AudioBuffer>,
+	ring: AudioBuffer,
 	next_sample: u64,
 	sample_number: u64,
 
@@ -158,7 +157,7 @@ pub struct APU<'a> {
 impl<'a> APU<'a> {
 	pub fn new(device: &'a RaylibAudio) -> Self {
 		let stream = device.new_audio_stream(AUDIO_FREQ as u32, 16, 1);
-		let ring = Arc::new(AudioBuffer::new());
+		let ring = AudioBuffer::new();
 
 		stream.set_volume(VOLUME_DIAL);
 		stream.play();
