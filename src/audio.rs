@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicI16, AtomicUsize};
 
 const AUDIO_FREQ: u16 = 48_000;
 const VOLUME_DIAL: f32 = 0.25;
+const AUDIO_BUFFER_SIZE: usize = 0x1000;
 
 #[derive(Default)]
 struct Channel {
@@ -94,7 +95,9 @@ impl AudioParams {
 }
 
 pub fn init_audio() -> RaylibAudio {
-	RaylibAudio::init_audio_device().expect("audio init failed")
+	let s = RaylibAudio::init_audio_device().expect("audio init failed");
+	s.set_audio_stream_buffer_size_default(AUDIO_BUFFER_SIZE as i32);
+	s
 }
 
 struct AudioBuffer {
@@ -156,18 +159,6 @@ impl<'a> APU<'a> {
 	pub fn new(device: &'a RaylibAudio) -> Self {
 		let stream = device.new_audio_stream(AUDIO_FREQ as u32, 16, 1);
 		let ring = Arc::new(AudioBuffer::new());
-		let ring_cb = ring.clone();
-		audio_stream_callback::set_audio_stream_callback(&stream, move |buf: &mut [i16]| {
-			let taken = ring_cb.take(buf.len());
-			for i in 0..buf.len() {
-				buf[i] = taken[i];
-			}
-			// for x in buf.iter() {
-			// 	print!("{}", if *x > 0 { "!" } else { " " })
-			// }
-			// println!("{buf:?}");
-		})
-		.expect("error activating audio callback");
 
 		stream.set_volume(VOLUME_DIAL);
 		stream.play();
@@ -213,6 +204,11 @@ impl<'a> APU<'a> {
 			};
 
 			self.ring.add(c2 >> 4);
+			if self.audio_stream.is_processed() {
+				self.audio_stream
+					.update(&self.ring.take(AUDIO_BUFFER_SIZE))
+					.unwrap();
+			}
 		}
 	}
 }
