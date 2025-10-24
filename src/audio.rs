@@ -97,55 +97,12 @@ pub fn init_audio() -> RaylibAudio {
 	s
 }
 
-struct AudioBuffer {
-	head: usize,
-	tail: usize,
-	buf: Vec<i16>,
-}
-impl AudioBuffer {
-	fn new() -> Self {
-		let mut buf = Vec::new();
-		buf.reserve_exact(0xffff + 1);
-		for _ in 0..=0xffff {
-			buf.push(0)
-		}
-		Self {
-			head: 0,
-			tail: 0,
-			buf: buf,
-		}
-	}
-	fn add(&mut self, val: i16) {
-		let ofs = self.head;
-		self.head += 1;
-		self.buf[ofs & 0xffff] = val;
-	}
-	fn take(&mut self, size: usize) -> Vec<i16> {
-		let mut dest = Vec::new();
-		dest.reserve_exact(size);
-		let ofs = self.tail & 0xffff;
-		self.tail += size;
-		if ofs + size <= 0xffff + 1 {
-			for x in &self.buf[ofs..ofs + size] {
-				dest.push(*x);
-			}
-		} else {
-			for x in &self.buf[ofs..] {
-				dest.push(*x);
-			}
-			for x in &self.buf[..size - dest.len()] {
-				dest.push(*x);
-			}
-		}
-		assert!(dest.len() == size);
-		dest
-	}
-}
-
 pub struct APU<'a> {
-	ring: AudioBuffer,
 	next_sample: u64,
 	sample_number: u64,
+
+	audio_buffer: Box<[i16; AUDIO_BUFFER_SIZE]>,
+	audio_buffer_ofs: usize,
 
 	pulse2_period_div: usize,
 	pulse2_current_sample: u8,
@@ -157,15 +114,17 @@ pub struct APU<'a> {
 impl<'a> APU<'a> {
 	pub fn new(device: &'a RaylibAudio) -> Self {
 		let stream = device.new_audio_stream(AUDIO_FREQ as u32, 16, 1);
-		let ring = AudioBuffer::new();
 
 		stream.set_volume(VOLUME_DIAL);
 		stream.play();
 
 		Self {
-			ring,
 			next_sample: 0,
 			sample_number: 0,
+
+			audio_buffer: Box::new([0; AUDIO_BUFFER_SIZE]),
+			audio_buffer_ofs: 0,
+
 			pulse2_period_div: 0,
 			pulse2_current_sample: 0,
 
@@ -202,11 +161,14 @@ impl<'a> APU<'a> {
 				if c2_is_low { i16::MIN } else { i16::MAX }
 			};
 
-			self.ring.add(c2 / 4);
-			if self.audio_stream.is_processed() {
+			self.audio_buffer[self.audio_buffer_ofs] = c2 / 4;
+			if self.audio_buffer_ofs < AUDIO_BUFFER_SIZE - 1 {
+				self.audio_buffer_ofs += 1;
+			} else if self.audio_stream.is_processed() {
 				self.audio_stream
-					.update(&self.ring.take(AUDIO_BUFFER_SIZE))
+					.update(self.audio_buffer.as_slice())
 					.unwrap();
+				self.audio_buffer_ofs = 0;
 			}
 		}
 	}
