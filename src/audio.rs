@@ -16,18 +16,28 @@ struct Channel {
 	trigger: bool,
 }
 impl Channel {
-	// fn get_trigger(&self) -> bool {
-	// 	self.nr[4] & 0b1000_0000 != 0
-	// }
-	// fn get_length_enable(&self) -> bool {
-	// 	todo!("check this");
-	// 	self.nr[4] & 0b0100_0000 != 0
-	// }
+	// fn get_trigger_enable(&self) {}
+	// fn get_length_enable(&self) {}
+	// fn get_pulse_length(&self) {}
+	// fn get_noise_length(&self) {}
+	// fn get_wave_length(&self) {}
+	// fn get_pulse_freq_sweep_pace(&self) {}
+	// fn get_pulse_freq_sweep_dir(&self) {}
+	// fn get_pulse_freq_sweep_step(&self) {}
 	fn get_period(&self) -> usize {
 		(self.nr[3] as usize) | ((self.nr[4] as usize & 0b111) << 8)
 	}
 	fn get_pulse_duty_cycle(&self) -> u8 {
 		self.nr[1] >> 6
+	}
+	fn get_pulse_volume(&self) -> u8 {
+		self.nr[2] >> 4
+	}
+	fn get_pulse_env_dir(&self) -> bool {
+		self.nr[2] & 0b1000 != 0
+	}
+	fn get_pulse_env_pace(&self) -> u8 {
+		self.nr[2] & 3
 	}
 }
 
@@ -106,6 +116,10 @@ pub struct APU<'a> {
 
 	pulse2_period_div: usize,
 	pulse2_current_sample: u8,
+	pulse2_internal_volume: u8,
+	pulse2_internal_env_counter: u8,
+	pulse2_internal_env_pace: u8,
+	pulse2_internal_env_dir: bool,
 
 	// Keep the stream around. It closes if it goes out of scope.
 	#[allow(dead_code)]
@@ -127,18 +141,59 @@ impl<'a> APU<'a> {
 
 			pulse2_period_div: 0,
 			pulse2_current_sample: 0,
+			pulse2_internal_volume: 0,
+			pulse2_internal_env_counter: 0,
+			pulse2_internal_env_pace: 0,
+			pulse2_internal_env_dir: false,
 
 			audio_stream: stream,
 		}
 	}
 	pub fn tick(&mut self, gb: &mut GB, dots: u64) {
-		// Pulse 2 Channel
+		if gb.bus.io.audio_params.channels[0].trigger {
+			gb.bus.io.audio_params.channels[0].trigger = false;
+		}
+		if gb.bus.io.audio_params.channels[1].trigger {
+			gb.bus.io.audio_params.channels[1].trigger = false;
+			self.pulse2_internal_volume = gb.bus.io.audio_params.channels[1].get_pulse_volume();
+			self.pulse2_internal_env_dir = gb.bus.io.audio_params.channels[1].get_pulse_env_dir();
+			self.pulse2_internal_env_pace = gb.bus.io.audio_params.channels[1].get_pulse_env_pace();
+			self.pulse2_internal_env_counter = self.pulse2_internal_env_pace;
+		}
+		if gb.bus.io.audio_params.channels[2].trigger {
+			gb.bus.io.audio_params.channels[2].trigger = false;
+		}
+		if gb.bus.io.audio_params.channels[3].trigger {
+			gb.bus.io.audio_params.channels[3].trigger = false;
+		}
+
+		// TODO: there should be a DIV-APU register, but for now, just read dots instead
+
+		// every 4 dots
 		if dots & 0b11 == 0 {
 			self.pulse2_period_div += 1;
 			if self.pulse2_period_div >= 0x800 {
 				self.pulse2_current_sample += 1;
 				self.pulse2_current_sample &= 7;
 				self.pulse2_period_div = gb.bus.io.audio_params.channels[1].get_period();
+			}
+		}
+
+		// 64 hz
+		// TODO: verify this math
+		if dots & ((DOTS_HZ as u64 >> 6) - 1) == 0 {
+			if self.pulse2_internal_env_pace != 0 {
+				if self.pulse2_internal_env_counter == 0 {
+					self.pulse2_internal_env_counter = self.pulse2_internal_env_pace;
+					if self.pulse2_internal_env_dir {
+						self.pulse2_internal_volume = self.pulse2_internal_volume.min(0xf);
+					} else {
+						self.pulse2_internal_volume = self.pulse2_internal_volume.saturating_sub(1);
+					}
+				} else {
+					self.pulse2_internal_env_counter =
+						self.pulse2_internal_env_counter.saturating_sub(1);
+				}
 			}
 		}
 
@@ -151,6 +206,8 @@ impl<'a> APU<'a> {
 				self.sample_number as u128 * DOTS_HZ as u128 / AUDIO_FREQ as u128
 			) as u64;
 
+			let c1 = { 0 };
+
 			let c2 = {
 				let c2_is_low = match gb.bus.io.audio_params.channels[1].get_pulse_duty_cycle() {
 					0 => self.pulse2_current_sample == 0,
@@ -158,10 +215,15 @@ impl<'a> APU<'a> {
 					2 => self.pulse2_current_sample <= 3,
 					_ => self.pulse2_current_sample <= 5,
 				};
-				if c2_is_low { i16::MIN } else { i16::MAX }
+				let out = if c2_is_low { i16::MIN } else { i16::MAX };
+				(out / 16) * self.pulse2_internal_volume as i16
 			};
 
-			self.audio_buffer[self.audio_buffer_ofs] = c2 / 4;
+			let c3 = { 0 };
+
+			let c4 = { 0 };
+
+			self.audio_buffer[self.audio_buffer_ofs] = c1 / 4 + c2 / 4 + c3 / 4 + c4 / 4;
 			if self.audio_buffer_ofs < AUDIO_BUFFER_SIZE - 1 {
 				self.audio_buffer_ofs += 1;
 			} else if self.audio_stream.is_processed() {
