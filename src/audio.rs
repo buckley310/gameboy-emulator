@@ -114,6 +114,13 @@ pub struct APU<'a> {
 	audio_buffer: Box<[i16; AUDIO_BUFFER_SIZE]>,
 	audio_buffer_ofs: usize,
 
+	pulse1_period_div: usize,
+	pulse1_current_sample: u8,
+	pulse1_internal_volume: u8,
+	pulse1_internal_env_counter: u8,
+	pulse1_internal_env_pace: u8,
+	pulse1_internal_env_dir: bool,
+
 	pulse2_period_div: usize,
 	pulse2_current_sample: u8,
 	pulse2_internal_volume: u8,
@@ -139,6 +146,13 @@ impl<'a> APU<'a> {
 			audio_buffer: Box::new([0; AUDIO_BUFFER_SIZE]),
 			audio_buffer_ofs: 0,
 
+			pulse1_period_div: 0,
+			pulse1_current_sample: 0,
+			pulse1_internal_volume: 0,
+			pulse1_internal_env_counter: 0,
+			pulse1_internal_env_pace: 0,
+			pulse1_internal_env_dir: false,
+
 			pulse2_period_div: 0,
 			pulse2_current_sample: 0,
 			pulse2_internal_volume: 0,
@@ -152,6 +166,10 @@ impl<'a> APU<'a> {
 	pub fn tick(&mut self, gb: &mut GB, dots: u64) {
 		if gb.bus.io.audio_params.channels[0].trigger {
 			gb.bus.io.audio_params.channels[0].trigger = false;
+			self.pulse1_internal_volume = gb.bus.io.audio_params.channels[0].get_pulse_volume();
+			self.pulse1_internal_env_dir = gb.bus.io.audio_params.channels[0].get_pulse_env_dir();
+			self.pulse1_internal_env_pace = gb.bus.io.audio_params.channels[0].get_pulse_env_pace();
+			self.pulse1_internal_env_counter = self.pulse1_internal_env_pace;
 		}
 		if gb.bus.io.audio_params.channels[1].trigger {
 			gb.bus.io.audio_params.channels[1].trigger = false;
@@ -171,6 +189,12 @@ impl<'a> APU<'a> {
 
 		// every 4 dots
 		if dots & 0b11 == 0 {
+			self.pulse1_period_div += 1;
+			if self.pulse1_period_div >= 0x800 {
+				self.pulse1_current_sample += 1;
+				self.pulse1_current_sample &= 7;
+				self.pulse1_period_div = gb.bus.io.audio_params.channels[0].get_period();
+			}
 			self.pulse2_period_div += 1;
 			if self.pulse2_period_div >= 0x800 {
 				self.pulse2_current_sample += 1;
@@ -182,6 +206,19 @@ impl<'a> APU<'a> {
 		// 64 hz
 		// TODO: verify this math
 		if dots & ((DOTS_HZ as u64 >> 6) - 1) == 0 {
+			if self.pulse1_internal_env_pace != 0 {
+				if self.pulse1_internal_env_counter == 0 {
+					self.pulse1_internal_env_counter = self.pulse1_internal_env_pace;
+					if self.pulse1_internal_env_dir {
+						self.pulse1_internal_volume = self.pulse1_internal_volume.min(0xf);
+					} else {
+						self.pulse1_internal_volume = self.pulse1_internal_volume.saturating_sub(1);
+					}
+				} else {
+					self.pulse1_internal_env_counter =
+						self.pulse1_internal_env_counter.saturating_sub(1);
+				}
+			}
 			if self.pulse2_internal_env_pace != 0 {
 				if self.pulse2_internal_env_counter == 0 {
 					self.pulse2_internal_env_counter = self.pulse2_internal_env_pace;
@@ -197,6 +234,12 @@ impl<'a> APU<'a> {
 			}
 		}
 
+		// 128 hz
+		// TODO: verify this math
+		if dots & ((DOTS_HZ as u64 >> 7) - 1) == 0 {
+			// TODO: ch1 frequency sweep
+		}
+
 		if dots > self.next_sample {
 			self.sample_number += 1;
 
@@ -206,7 +249,16 @@ impl<'a> APU<'a> {
 				self.sample_number as u128 * DOTS_HZ as u128 / AUDIO_FREQ as u128
 			) as u64;
 
-			let c1 = { 0 };
+			let c1 = {
+				let c1_is_low = match gb.bus.io.audio_params.channels[0].get_pulse_duty_cycle() {
+					0 => self.pulse1_current_sample == 0,
+					1 => self.pulse1_current_sample <= 1,
+					2 => self.pulse1_current_sample <= 3,
+					_ => self.pulse1_current_sample <= 5,
+				};
+				let out = if c1_is_low { i16::MIN } else { i16::MAX };
+				(out / 16) * self.pulse1_internal_volume as i16
+			};
 
 			let c2 = {
 				let c2_is_low = match gb.bus.io.audio_params.channels[1].get_pulse_duty_cycle() {
