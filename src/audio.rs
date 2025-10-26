@@ -17,8 +17,29 @@ struct Channel {
 }
 impl Channel {
 	// fn get_trigger_enable(&self) {}
-	// fn get_length_enable(&self) {}
-	// fn get_pulse_length(&self) {}
+	fn get_length_enable(&self) -> bool {
+		self.nr[4] & 0b_0100_0000 != 0
+	}
+	fn get_pulse_length(&self) -> u8 {
+		self.nr[1] & 0b_11_1111
+	}
+	fn set_pulse_length(&mut self, n: u8) {
+		self.nr[1] &= 0b_1100_0000;
+		self.nr[1] |= 0b_0011_1111 & n;
+	}
+	fn get_noise_length(&self) -> u8 {
+		self.nr[1] & 0b_11_1111
+	}
+	fn set_noise_length(&mut self, n: u8) {
+		self.nr[1] &= 0b_1100_0000;
+		self.nr[1] |= 0b_0011_1111 & n;
+	}
+	fn get_wave_length(&self) -> u8 {
+		self.nr[1]
+	}
+	fn set_wave_length(&mut self, n: u8) {
+		self.nr[1] = n;
+	}
 	// fn get_noise_length(&self) {}
 	// fn get_wave_length(&self) {}
 	// fn get_pulse_freq_sweep_pace(&self) {}
@@ -114,6 +135,7 @@ pub struct APU<'a> {
 	audio_buffer: Box<[i16; AUDIO_BUFFER_SIZE]>,
 	audio_buffer_ofs: usize,
 
+	pulse1_enabled: bool,
 	pulse1_period_div: usize,
 	pulse1_current_sample: u8,
 	pulse1_internal_volume: u8,
@@ -121,6 +143,7 @@ pub struct APU<'a> {
 	pulse1_internal_env_pace: u8,
 	pulse1_internal_env_dir: bool,
 
+	pulse2_enabled: bool,
 	pulse2_period_div: usize,
 	pulse2_current_sample: u8,
 	pulse2_internal_volume: u8,
@@ -146,6 +169,7 @@ impl<'a> APU<'a> {
 			audio_buffer: Box::new([0; AUDIO_BUFFER_SIZE]),
 			audio_buffer_ofs: 0,
 
+			pulse1_enabled: false,
 			pulse1_period_div: 0,
 			pulse1_current_sample: 0,
 			pulse1_internal_volume: 0,
@@ -153,6 +177,7 @@ impl<'a> APU<'a> {
 			pulse1_internal_env_pace: 0,
 			pulse1_internal_env_dir: false,
 
+			pulse2_enabled: false,
 			pulse2_period_div: 0,
 			pulse2_current_sample: 0,
 			pulse2_internal_volume: 0,
@@ -166,6 +191,7 @@ impl<'a> APU<'a> {
 	pub fn tick(&mut self, gb: &mut GB, dots: u64) {
 		if gb.bus.io.audio_params.channels[0].trigger {
 			gb.bus.io.audio_params.channels[0].trigger = false;
+			self.pulse1_enabled = true;
 			self.pulse1_internal_volume = gb.bus.io.audio_params.channels[0].get_pulse_volume();
 			self.pulse1_internal_env_dir = gb.bus.io.audio_params.channels[0].get_pulse_env_dir();
 			self.pulse1_internal_env_pace = gb.bus.io.audio_params.channels[0].get_pulse_env_pace();
@@ -173,6 +199,7 @@ impl<'a> APU<'a> {
 		}
 		if gb.bus.io.audio_params.channels[1].trigger {
 			gb.bus.io.audio_params.channels[1].trigger = false;
+			self.pulse2_enabled = true;
 			self.pulse2_internal_volume = gb.bus.io.audio_params.channels[1].get_pulse_volume();
 			self.pulse2_internal_env_dir = gb.bus.io.audio_params.channels[1].get_pulse_env_dir();
 			self.pulse2_internal_env_pace = gb.bus.io.audio_params.channels[1].get_pulse_env_pace();
@@ -234,6 +261,31 @@ impl<'a> APU<'a> {
 			// TODO: ch1 frequency sweep
 		}
 
+		// 256 hz
+		// TODO: verify this math
+		if dots & ((DOTS_HZ as u64 >> 8) - 1) == 0 {
+			if gb.bus.io.audio_params.channels[0].get_length_enable() {
+				let len = gb.bus.io.audio_params.channels[0].get_pulse_length();
+				if len == 63 {
+					self.pulse1_enabled = false;
+				}
+				gb.bus.io.audio_params.channels[0].set_pulse_length(len.saturating_add(1));
+			}
+			if gb.bus.io.audio_params.channels[1].get_length_enable() {
+				let len = gb.bus.io.audio_params.channels[1].get_pulse_length();
+				if len == 63 {
+					self.pulse2_enabled = false;
+				}
+				gb.bus.io.audio_params.channels[1].set_pulse_length(len.saturating_add(1));
+			}
+			if gb.bus.io.audio_params.channels[2].get_length_enable() {
+				// length timer max == 256
+			}
+			if gb.bus.io.audio_params.channels[3].get_length_enable() {
+				// length timer max == 64
+			}
+		}
+
 		if dots > self.next_sample {
 			self.sample_number += 1;
 
@@ -243,7 +295,7 @@ impl<'a> APU<'a> {
 				self.sample_number as u128 * DOTS_HZ as u128 / AUDIO_FREQ as u128
 			) as u64;
 
-			let c1 = {
+			let c1 = if self.pulse1_enabled {
 				let c1_is_low = match gb.bus.io.audio_params.channels[0].get_pulse_duty_cycle() {
 					0 => self.pulse1_current_sample == 0,
 					1 => self.pulse1_current_sample <= 1,
@@ -252,9 +304,11 @@ impl<'a> APU<'a> {
 				};
 				let out = if c1_is_low { i16::MIN } else { i16::MAX };
 				(out / 16) * self.pulse1_internal_volume as i16
+			} else {
+				0
 			};
 
-			let c2 = {
+			let c2 = if self.pulse2_enabled {
 				let c2_is_low = match gb.bus.io.audio_params.channels[1].get_pulse_duty_cycle() {
 					0 => self.pulse2_current_sample == 0,
 					1 => self.pulse2_current_sample <= 1,
@@ -263,6 +317,8 @@ impl<'a> APU<'a> {
 				};
 				let out = if c2_is_low { i16::MIN } else { i16::MAX };
 				(out / 16) * self.pulse2_internal_volume as i16
+			} else {
+				0
 			};
 
 			let c3 = { 0 };
