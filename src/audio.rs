@@ -138,18 +138,18 @@ pub struct APU<'a> {
 	pulse1_enabled: bool,
 	pulse1_period_div: usize,
 	pulse1_current_sample: u8,
-	pulse1_internal_volume: u8,
-	pulse1_internal_env_counter: u8,
-	pulse1_internal_env_pace: u8,
-	pulse1_internal_env_dir: bool,
+	pulse1_env_counter: u8,
+	pulse1_volume_regcopy: u8,
+	pulse1_env_pace_regcopy: u8,
+	pulse1_env_dir_regcopy: bool,
 
 	pulse2_enabled: bool,
 	pulse2_period_div: usize,
 	pulse2_current_sample: u8,
-	pulse2_internal_volume: u8,
-	pulse2_internal_env_counter: u8,
-	pulse2_internal_env_pace: u8,
-	pulse2_internal_env_dir: bool,
+	pulse2_env_counter: u8,
+	pulse2_volume_regcopy: u8,
+	pulse2_env_pace_regcopy: u8,
+	pulse2_env_dir_regcopy: bool,
 
 	// Keep the stream around. It closes if it goes out of scope.
 	#[allow(dead_code)]
@@ -172,18 +172,18 @@ impl<'a> APU<'a> {
 			pulse1_enabled: false,
 			pulse1_period_div: 0,
 			pulse1_current_sample: 0,
-			pulse1_internal_volume: 0,
-			pulse1_internal_env_counter: 0,
-			pulse1_internal_env_pace: 0,
-			pulse1_internal_env_dir: false,
+			pulse1_env_counter: 0,
+			pulse1_volume_regcopy: 0,
+			pulse1_env_pace_regcopy: 0,
+			pulse1_env_dir_regcopy: false,
 
 			pulse2_enabled: false,
 			pulse2_period_div: 0,
 			pulse2_current_sample: 0,
-			pulse2_internal_volume: 0,
-			pulse2_internal_env_counter: 0,
-			pulse2_internal_env_pace: 0,
-			pulse2_internal_env_dir: false,
+			pulse2_env_counter: 0,
+			pulse2_volume_regcopy: 0,
+			pulse2_env_pace_regcopy: 0,
+			pulse2_env_dir_regcopy: false,
 
 			audio_stream: stream,
 		}
@@ -192,18 +192,18 @@ impl<'a> APU<'a> {
 		if gb.bus.io.audio_params.channels[0].trigger {
 			gb.bus.io.audio_params.channels[0].trigger = false;
 			self.pulse1_enabled = true;
-			self.pulse1_internal_volume = gb.bus.io.audio_params.channels[0].get_pulse_volume();
-			self.pulse1_internal_env_dir = gb.bus.io.audio_params.channels[0].get_pulse_env_dir();
-			self.pulse1_internal_env_pace = gb.bus.io.audio_params.channels[0].get_pulse_env_pace();
-			self.pulse1_internal_env_counter = self.pulse1_internal_env_pace;
+			self.pulse1_volume_regcopy = gb.bus.io.audio_params.channels[0].get_pulse_volume();
+			self.pulse1_env_dir_regcopy = gb.bus.io.audio_params.channels[0].get_pulse_env_dir();
+			self.pulse1_env_pace_regcopy = gb.bus.io.audio_params.channels[0].get_pulse_env_pace();
+			self.pulse1_env_counter = self.pulse1_env_pace_regcopy;
 		}
 		if gb.bus.io.audio_params.channels[1].trigger {
 			gb.bus.io.audio_params.channels[1].trigger = false;
 			self.pulse2_enabled = true;
-			self.pulse2_internal_volume = gb.bus.io.audio_params.channels[1].get_pulse_volume();
-			self.pulse2_internal_env_dir = gb.bus.io.audio_params.channels[1].get_pulse_env_dir();
-			self.pulse2_internal_env_pace = gb.bus.io.audio_params.channels[1].get_pulse_env_pace();
-			self.pulse2_internal_env_counter = self.pulse2_internal_env_pace;
+			self.pulse2_volume_regcopy = gb.bus.io.audio_params.channels[1].get_pulse_volume();
+			self.pulse2_env_dir_regcopy = gb.bus.io.audio_params.channels[1].get_pulse_env_dir();
+			self.pulse2_env_pace_regcopy = gb.bus.io.audio_params.channels[1].get_pulse_env_pace();
+			self.pulse2_env_counter = self.pulse2_env_pace_regcopy;
 		}
 		if gb.bus.io.audio_params.channels[2].trigger {
 			gb.bus.io.audio_params.channels[2].trigger = false;
@@ -233,25 +233,23 @@ impl<'a> APU<'a> {
 		// 64 hz
 		// TODO: verify this math
 		if dots & ((DOTS_HZ as u64 >> 6) - 1) == 0 {
-			if self.pulse1_internal_env_pace != 0 && self.pulse1_internal_env_counter == 0 {
-				self.pulse1_internal_env_counter = self.pulse1_internal_env_pace;
-				self.pulse1_internal_volume = match self.pulse1_internal_env_dir {
-					true => (self.pulse1_internal_volume + 1).min(0xf),
-					false => self.pulse1_internal_volume.saturating_sub(1),
+			if self.pulse1_env_pace_regcopy != 0 && self.pulse1_env_counter == 0 {
+				self.pulse1_env_counter = self.pulse1_env_pace_regcopy;
+				self.pulse1_volume_regcopy = match self.pulse1_env_dir_regcopy {
+					true => (self.pulse1_volume_regcopy + 1).min(0xf),
+					false => self.pulse1_volume_regcopy.saturating_sub(1),
 				}
 			} else {
-				self.pulse1_internal_env_counter =
-					self.pulse1_internal_env_counter.saturating_sub(1);
+				self.pulse1_env_counter = self.pulse1_env_counter.saturating_sub(1);
 			}
-			if self.pulse2_internal_env_pace != 0 && self.pulse2_internal_env_counter == 0 {
-				self.pulse2_internal_env_counter = self.pulse2_internal_env_pace;
-				self.pulse2_internal_volume = match self.pulse2_internal_env_dir {
-					true => (self.pulse2_internal_volume + 1).min(0xf),
-					false => self.pulse2_internal_volume.saturating_sub(1),
+			if self.pulse2_env_pace_regcopy != 0 && self.pulse2_env_counter == 0 {
+				self.pulse2_env_counter = self.pulse2_env_pace_regcopy;
+				self.pulse2_volume_regcopy = match self.pulse2_env_dir_regcopy {
+					true => (self.pulse2_volume_regcopy + 1).min(0xf),
+					false => self.pulse2_volume_regcopy.saturating_sub(1),
 				}
 			} else {
-				self.pulse2_internal_env_counter =
-					self.pulse2_internal_env_counter.saturating_sub(1);
+				self.pulse2_env_counter = self.pulse2_env_counter.saturating_sub(1);
 			}
 		}
 
@@ -303,7 +301,7 @@ impl<'a> APU<'a> {
 					_ => self.pulse1_current_sample <= 5,
 				};
 				let out = if c1_is_low { i16::MIN } else { i16::MAX };
-				(out / 16) * self.pulse1_internal_volume as i16
+				(out / 16) * self.pulse1_volume_regcopy as i16
 			} else {
 				0
 			};
@@ -316,7 +314,7 @@ impl<'a> APU<'a> {
 					_ => self.pulse2_current_sample <= 5,
 				};
 				let out = if c2_is_low { i16::MIN } else { i16::MAX };
-				(out / 16) * self.pulse2_internal_volume as i16
+				(out / 16) * self.pulse2_volume_regcopy as i16
 			} else {
 				0
 			};
