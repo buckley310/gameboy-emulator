@@ -206,31 +206,25 @@ impl<'a> APU<'a> {
 		// 64 hz
 		// TODO: verify this math
 		if dots & ((DOTS_HZ as u64 >> 6) - 1) == 0 {
-			if self.pulse1_internal_env_pace != 0 {
-				if self.pulse1_internal_env_counter == 0 {
-					self.pulse1_internal_env_counter = self.pulse1_internal_env_pace;
-					if self.pulse1_internal_env_dir {
-						self.pulse1_internal_volume = self.pulse1_internal_volume.min(0xf);
-					} else {
-						self.pulse1_internal_volume = self.pulse1_internal_volume.saturating_sub(1);
-					}
-				} else {
-					self.pulse1_internal_env_counter =
-						self.pulse1_internal_env_counter.saturating_sub(1);
+			if self.pulse1_internal_env_pace != 0 && self.pulse1_internal_env_counter == 0 {
+				self.pulse1_internal_env_counter = self.pulse1_internal_env_pace;
+				self.pulse1_internal_volume = match self.pulse1_internal_env_dir {
+					true => self.pulse1_internal_volume.min(0xf),
+					false => self.pulse1_internal_volume.saturating_sub(1),
 				}
+			} else {
+				self.pulse1_internal_env_counter =
+					self.pulse1_internal_env_counter.saturating_sub(1);
 			}
-			if self.pulse2_internal_env_pace != 0 {
-				if self.pulse2_internal_env_counter == 0 {
-					self.pulse2_internal_env_counter = self.pulse2_internal_env_pace;
-					if self.pulse2_internal_env_dir {
-						self.pulse2_internal_volume = self.pulse2_internal_volume.min(0xf);
-					} else {
-						self.pulse2_internal_volume = self.pulse2_internal_volume.saturating_sub(1);
-					}
-				} else {
-					self.pulse2_internal_env_counter =
-						self.pulse2_internal_env_counter.saturating_sub(1);
+			if self.pulse2_internal_env_pace != 0 && self.pulse2_internal_env_counter == 0 {
+				self.pulse2_internal_env_counter = self.pulse2_internal_env_pace;
+				self.pulse2_internal_volume = match self.pulse2_internal_env_dir {
+					true => self.pulse2_internal_volume.min(0xf),
+					false => self.pulse2_internal_volume.saturating_sub(1),
 				}
+			} else {
+				self.pulse2_internal_env_counter =
+					self.pulse2_internal_env_counter.saturating_sub(1);
 			}
 		}
 
