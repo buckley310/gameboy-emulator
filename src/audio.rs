@@ -236,7 +236,7 @@ impl<'a> APU<'a> {
 			if self.pulse1_internal_env_pace != 0 && self.pulse1_internal_env_counter == 0 {
 				self.pulse1_internal_env_counter = self.pulse1_internal_env_pace;
 				self.pulse1_internal_volume = match self.pulse1_internal_env_dir {
-					true => self.pulse1_internal_volume.min(0xf),
+					true => (self.pulse1_internal_volume + 1).min(0xf),
 					false => self.pulse1_internal_volume.saturating_sub(1),
 				}
 			} else {
@@ -246,7 +246,7 @@ impl<'a> APU<'a> {
 			if self.pulse2_internal_env_pace != 0 && self.pulse2_internal_env_counter == 0 {
 				self.pulse2_internal_env_counter = self.pulse2_internal_env_pace;
 				self.pulse2_internal_volume = match self.pulse2_internal_env_dir {
-					true => self.pulse2_internal_volume.min(0xf),
+					true => (self.pulse2_internal_volume + 1).min(0xf),
 					false => self.pulse2_internal_volume.saturating_sub(1),
 				}
 			} else {
