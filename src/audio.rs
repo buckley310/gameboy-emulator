@@ -20,6 +20,15 @@ impl Channel {
 	fn get_length_enable(&self) -> bool {
 		self.nr[4] & 0b_0100_0000 != 0
 	}
+	fn get_pulse1_sweep_dir(&self) -> bool {
+		self.nr[0] & 0b1000 != 0
+	}
+	fn get_pulse1_sweep_pace(&self) -> u8 {
+		(self.nr[0] >> 4) & 7
+	}
+	fn get_pulse1_sweep_step(&self) -> u8 {
+		self.nr[0] & 7
+	}
 	fn get_pulse_length(&self) -> u8 {
 		self.nr[1] & 0b_11_1111
 	}
@@ -45,8 +54,13 @@ impl Channel {
 	// fn get_pulse_freq_sweep_pace(&self) {}
 	// fn get_pulse_freq_sweep_dir(&self) {}
 	// fn get_pulse_freq_sweep_step(&self) {}
-	fn get_period(&self) -> usize {
+	fn get_pulse_period(&self) -> usize {
 		(self.nr[3] as usize) | ((self.nr[4] as usize & 0b111) << 8)
+	}
+	fn set_pulse_period(&mut self, n: usize) {
+		self.nr[3] = (n & 0xff) as u8;
+		self.nr[4] &= 0b_1111_1000;
+		self.nr[4] |= ((n >> 8) & 7) as u8;
 	}
 	fn get_pulse_duty_cycle(&self) -> u8 {
 		self.nr[1] >> 6
@@ -142,6 +156,10 @@ pub struct APU<'a> {
 	pulse1_volume_regcopy: u8,
 	pulse1_env_pace_regcopy: u8,
 	pulse1_env_dir_regcopy: bool,
+	pulse1_sweep_counter: u8,
+	pulse1_sweep_dir_regcopy: bool,
+	pulse1_sweep_pace_regcopy: u8,
+	pulse1_sweep_step_regcopy: u8,
 
 	pulse2_enabled: bool,
 	pulse2_period_div: usize,
@@ -176,6 +194,10 @@ impl<'a> APU<'a> {
 			pulse1_volume_regcopy: 0,
 			pulse1_env_pace_regcopy: 0,
 			pulse1_env_dir_regcopy: false,
+			pulse1_sweep_counter: 0,
+			pulse1_sweep_dir_regcopy: false,
+			pulse1_sweep_pace_regcopy: 0,
+			pulse1_sweep_step_regcopy: 0,
 
 			pulse2_enabled: false,
 			pulse2_period_div: 0,
@@ -196,6 +218,16 @@ impl<'a> APU<'a> {
 			self.pulse1_env_dir_regcopy = gb.bus.io.audio_params.channels[0].get_pulse_env_dir();
 			self.pulse1_env_pace_regcopy = gb.bus.io.audio_params.channels[0].get_pulse_env_pace();
 			self.pulse1_env_counter = self.pulse1_env_pace_regcopy;
+
+			// Technically, writing zero to sweep pace at any time should silence the channel.
+			// But we are only checking it on trigger.
+			self.pulse1_sweep_dir_regcopy =
+				gb.bus.io.audio_params.channels[0].get_pulse1_sweep_dir();
+			self.pulse1_sweep_pace_regcopy =
+				gb.bus.io.audio_params.channels[0].get_pulse1_sweep_pace();
+			self.pulse1_sweep_step_regcopy =
+				gb.bus.io.audio_params.channels[0].get_pulse1_sweep_step();
+			self.pulse1_sweep_counter = self.pulse1_sweep_pace_regcopy;
 		}
 		if gb.bus.io.audio_params.channels[1].trigger {
 			gb.bus.io.audio_params.channels[1].trigger = false;
@@ -220,13 +252,13 @@ impl<'a> APU<'a> {
 			if self.pulse1_period_div >= 0x800 {
 				self.pulse1_current_sample += 1;
 				self.pulse1_current_sample &= 7;
-				self.pulse1_period_div = gb.bus.io.audio_params.channels[0].get_period();
+				self.pulse1_period_div = gb.bus.io.audio_params.channels[0].get_pulse_period();
 			}
 			self.pulse2_period_div += 1;
 			if self.pulse2_period_div >= 0x800 {
 				self.pulse2_current_sample += 1;
 				self.pulse2_current_sample &= 7;
-				self.pulse2_period_div = gb.bus.io.audio_params.channels[1].get_period();
+				self.pulse2_period_div = gb.bus.io.audio_params.channels[1].get_pulse_period();
 			}
 		}
 
@@ -256,7 +288,24 @@ impl<'a> APU<'a> {
 		// 128 hz
 		// TODO: verify this math
 		if dots & ((DOTS_HZ as u64 >> 7) - 1) == 0 {
-			// TODO: ch1 frequency sweep
+			if self.pulse1_sweep_pace_regcopy != 0 && self.pulse1_sweep_counter == 0 {
+				self.pulse1_sweep_counter = self.pulse1_sweep_pace_regcopy;
+				let old = gb.bus.io.audio_params.channels[0].get_pulse_period();
+				let step = self.pulse1_sweep_step_regcopy;
+				let change_by = old / (1 << step);
+				match self.pulse1_sweep_dir_regcopy {
+					true => {
+						gb.bus.io.audio_params.channels[0]
+							.set_pulse_period(old.saturating_sub(change_by));
+					}
+					false => {
+						gb.bus.io.audio_params.channels[0]
+							.set_pulse_period((old + change_by).min(0b_111_1111_1111));
+					}
+				}
+			} else {
+				self.pulse1_sweep_counter = self.pulse1_sweep_counter.saturating_sub(1);
+			}
 		}
 
 		// 256 hz
