@@ -263,7 +263,6 @@ impl<'a> APU<'a> {
 		}
 
 		// 64 hz
-		// TODO: verify this math
 		if dots & ((DOTS_HZ as u64 >> 6) - 1) == 0 {
 			if self.pulse1_env_pace_regcopy != 0 && self.pulse1_env_counter == 0 {
 				self.pulse1_env_counter = self.pulse1_env_pace_regcopy;
@@ -286,7 +285,6 @@ impl<'a> APU<'a> {
 		}
 
 		// 128 hz
-		// TODO: verify this math
 		if dots & ((DOTS_HZ as u64 >> 7) - 1) == 0 {
 			if self.pulse1_sweep_pace_regcopy != 0 && self.pulse1_sweep_counter == 0 {
 				self.pulse1_sweep_counter = self.pulse1_sweep_pace_regcopy;
@@ -309,7 +307,6 @@ impl<'a> APU<'a> {
 		}
 
 		// 256 hz
-		// TODO: verify this math
 		if dots & ((DOTS_HZ as u64 >> 8) - 1) == 0 {
 			if gb.bus.io.audio_params.channels[0].get_length_enable() {
 				let len = gb.bus.io.audio_params.channels[0].get_pulse_length();
