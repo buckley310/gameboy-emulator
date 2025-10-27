@@ -80,10 +80,15 @@ pub struct UI {
 	rl: (RaylibHandle, RaylibThread),
 	tex: GbTextures,
 	frame_number: u64,
+	verbose: bool,
 }
 impl UI {
-	pub fn default() -> UI {
-		let mut rl = raylib::init().size(1920, 1080).build();
+	pub fn new(verbose: bool) -> UI {
+		let (w, h) = match verbose {
+			true => (1920, 1080),
+			false => (160 * 3 + PADDING * 2, 144 * 3 + (PADDING * 2)),
+		};
+		let mut rl = raylib::init().size(w, h).build();
 		let tex = GbTextures {
 			fb: blank_tex(&mut rl, 160, 144),
 			mem: blank_tex(&mut rl, 256, 256),
@@ -96,6 +101,7 @@ impl UI {
 			rl,
 			tex,
 			frame_number: 0,
+			verbose,
 		}
 	}
 	pub fn draw(&mut self, gb: &mut GB, play: &mut bool) {
@@ -117,36 +123,40 @@ impl UI {
 		}
 
 		self.tex.fb.update_texture(&gb.framebuffer).unwrap();
-		self.tex.mem.update_texture(&mem_dump(&gb.bus)).unwrap();
-		self.tex.bg.update_texture(&bg_map(&gb.bus)).unwrap();
-		self.tex.win.update_texture(&window_map(&gb.bus)).unwrap();
-		self.tex.tile.update_texture(&tile_dump(&gb.bus)).unwrap();
-		self.tex.vram.update_texture(&vram_dump(&gb.bus)).unwrap();
+		if self.verbose {
+			self.tex.mem.update_texture(&mem_dump(&gb.bus)).unwrap();
+			self.tex.bg.update_texture(&bg_map(&gb.bus)).unwrap();
+			self.tex.win.update_texture(&window_map(&gb.bus)).unwrap();
+			self.tex.tile.update_texture(&tile_dump(&gb.bus)).unwrap();
+			self.tex.vram.update_texture(&vram_dump(&gb.bus)).unwrap();
+		}
 
 		let mut l = Layout::default();
 		let mut d = self.rl.0.begin_drawing(&self.rl.1);
 		d.clear_background(Color::GRAY);
-		d.draw_texture_ex(
-			&self.tex.bg,
-			l.stack(self.tex.bg.width, self.tex.bg.height, 2),
-			0.0,
-			2.0,
-			Color::WHITE,
-		);
-		d.draw_texture_ex(
-			&self.tex.win,
-			l.stack(self.tex.win.width, self.tex.win.height, 2),
-			0.0,
-			2.0,
-			Color::WHITE,
-		);
-		d.draw_texture_ex(
-			&self.tex.mem,
-			l.next(self.tex.mem.width, self.tex.mem.height, 2),
-			0.0,
-			2.0,
-			Color::WHITE,
-		);
+		if self.verbose {
+			d.draw_texture_ex(
+				&self.tex.bg,
+				l.stack(self.tex.bg.width, self.tex.bg.height, 2),
+				0.0,
+				2.0,
+				Color::WHITE,
+			);
+			d.draw_texture_ex(
+				&self.tex.win,
+				l.stack(self.tex.win.width, self.tex.win.height, 2),
+				0.0,
+				2.0,
+				Color::WHITE,
+			);
+			d.draw_texture_ex(
+				&self.tex.mem,
+				l.next(self.tex.mem.width, self.tex.mem.height, 2),
+				0.0,
+				2.0,
+				Color::WHITE,
+			);
+		}
 		d.draw_texture_ex(
 			&self.tex.fb,
 			l.stack(self.tex.fb.width, self.tex.fb.height, 3),
@@ -154,21 +164,22 @@ impl UI {
 			3.0,
 			Color::WHITE,
 		);
-		d.draw_texture_ex(
-			&self.tex.tile,
-			l.next(self.tex.tile.width, self.tex.tile.height, 3),
-			0.0,
-			3.0,
-			Color::WHITE,
-		);
-		d.draw_texture_ex(
-			&self.tex.vram,
-			l.next(self.tex.vram.width, self.tex.vram.height, 3),
-			0.0,
-			3.0,
-			Color::WHITE,
-		);
-
+		if self.verbose {
+			d.draw_texture_ex(
+				&self.tex.tile,
+				l.next(self.tex.tile.width, self.tex.tile.height, 3),
+				0.0,
+				3.0,
+				Color::WHITE,
+			);
+			d.draw_texture_ex(
+				&self.tex.vram,
+				l.next(self.tex.vram.width, self.tex.vram.height, 3),
+				0.0,
+				3.0,
+				Color::WHITE,
+			);
+		}
 		self.frame_number += 1;
 	}
 }

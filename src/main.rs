@@ -61,7 +61,7 @@ fn main() {
 		}
 	}
 
-	let mut ui = ui::UI::default();
+	let mut ui = ui::UI::new(false);
 
 	assert!(rom.len() > 0);
 	gb.bus.cart.load_rom(&rom);
