@@ -2,7 +2,7 @@ use crate::{DOTS_HZ, GB};
 use raylib::prelude::*;
 
 const AUDIO_FREQ: u16 = 48_000;
-const VOLUME_DIAL: f32 = 0.25;
+const VOLUME_DIAL: f32 = 1.0;
 const AUDIO_BUFFER_SIZE: usize = 0x1000;
 
 #[derive(Default)]
