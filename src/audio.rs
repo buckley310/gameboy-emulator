@@ -160,9 +160,7 @@ pub struct APU<'a> {
 	pulse1_env_pace_regcopy: u8,
 	pulse1_env_dir_regcopy: bool,
 	pulse1_sweep_counter: u8,
-	pulse1_sweep_dir_regcopy: bool,
 	pulse1_sweep_pace_regcopy: u8,
-	pulse1_sweep_step_regcopy: u8,
 
 	pulse2_enabled: bool,
 	pulse2_period_div: usize,
@@ -201,9 +199,7 @@ impl<'a> APU<'a> {
 			pulse1_env_pace_regcopy: 0,
 			pulse1_env_dir_regcopy: false,
 			pulse1_sweep_counter: 0,
-			pulse1_sweep_dir_regcopy: false,
 			pulse1_sweep_pace_regcopy: 0,
-			pulse1_sweep_step_regcopy: 0,
 
 			pulse2_enabled: false,
 			pulse2_period_div: 0,
@@ -225,14 +221,8 @@ impl<'a> APU<'a> {
 			self.pulse1_env_pace_regcopy = gb.bus.io.audio_params.channels[0].get_pulse_env_pace();
 			self.pulse1_env_counter = self.pulse1_env_pace_regcopy;
 
-			// Technically, writing zero to sweep pace at any time should silence the channel.
-			// I'm not implementing that right now.
-			self.pulse1_sweep_dir_regcopy =
-				gb.bus.io.audio_params.channels[0].get_pulse1_sweep_dir();
 			self.pulse1_sweep_pace_regcopy =
 				gb.bus.io.audio_params.channels[0].get_pulse1_sweep_pace();
-			self.pulse1_sweep_step_regcopy =
-				gb.bus.io.audio_params.channels[0].get_pulse1_sweep_step();
 			self.pulse1_sweep_counter = self.pulse1_sweep_pace_regcopy;
 		}
 		if gb.bus.io.audio_params.channels[1].trigger {
@@ -300,17 +290,14 @@ impl<'a> APU<'a> {
 		// 128 hz
 		if div_apu_changed && self.div_apu & 3 == 0 {
 			if self.pulse1_sweep_pace_regcopy != 0 && self.pulse1_sweep_counter == 0 {
-				self.pulse1_sweep_dir_regcopy =
-					gb.bus.io.audio_params.channels[0].get_pulse1_sweep_dir();
 				self.pulse1_sweep_pace_regcopy =
 					gb.bus.io.audio_params.channels[0].get_pulse1_sweep_pace();
-				self.pulse1_sweep_step_regcopy =
-					gb.bus.io.audio_params.channels[0].get_pulse1_sweep_step();
 				self.pulse1_sweep_counter = self.pulse1_sweep_pace_regcopy;
+
 				let old = gb.bus.io.audio_params.channels[0].get_pulse_period();
-				let step = self.pulse1_sweep_step_regcopy;
-				let change_by = old / (1 << step);
-				match self.pulse1_sweep_dir_regcopy {
+				let change_by =
+					old / (1 << gb.bus.io.audio_params.channels[0].get_pulse1_sweep_step());
+				match gb.bus.io.audio_params.channels[0].get_pulse1_sweep_dir() {
 					true => {
 						gb.bus.io.audio_params.channels[0]
 							.set_pulse_period(old.saturating_sub(change_by));
