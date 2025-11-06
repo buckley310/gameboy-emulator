@@ -226,7 +226,7 @@ impl<'a> APU<'a> {
 			self.pulse1_env_counter = self.pulse1_env_pace_regcopy;
 
 			// Technically, writing zero to sweep pace at any time should silence the channel.
-			// But we are only checking it on trigger.
+			// I'm not implementing that right now.
 			self.pulse1_sweep_dir_regcopy =
 				gb.bus.io.audio_params.channels[0].get_pulse1_sweep_dir();
 			self.pulse1_sweep_pace_regcopy =
@@ -300,6 +300,12 @@ impl<'a> APU<'a> {
 		// 128 hz
 		if div_apu_changed && self.div_apu & 3 == 0 {
 			if self.pulse1_sweep_pace_regcopy != 0 && self.pulse1_sweep_counter == 0 {
+				self.pulse1_sweep_dir_regcopy =
+					gb.bus.io.audio_params.channels[0].get_pulse1_sweep_dir();
+				self.pulse1_sweep_pace_regcopy =
+					gb.bus.io.audio_params.channels[0].get_pulse1_sweep_pace();
+				self.pulse1_sweep_step_regcopy =
+					gb.bus.io.audio_params.channels[0].get_pulse1_sweep_step();
 				self.pulse1_sweep_counter = self.pulse1_sweep_pace_regcopy;
 				let old = gb.bus.io.audio_params.channels[0].get_pulse_period();
 				let step = self.pulse1_sweep_step_regcopy;
