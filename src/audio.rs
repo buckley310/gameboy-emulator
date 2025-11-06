@@ -149,6 +149,9 @@ pub struct APU<'a> {
 	audio_buffer: Box<[i16; AUDIO_BUFFER_SIZE]>,
 	audio_buffer_ofs: usize,
 
+	div_apu: u8,
+	div_main_previous_bit4: bool,
+
 	pulse1_enabled: bool,
 	pulse1_period_div: usize,
 	pulse1_current_sample: u8,
@@ -183,6 +186,9 @@ impl<'a> APU<'a> {
 		Self {
 			next_sample: 0,
 			sample_number: 0,
+
+			div_apu: 0,
+			div_main_previous_bit4: false,
 
 			audio_buffer: Box::new([0; AUDIO_BUFFER_SIZE]),
 			audio_buffer_ofs: 0,
@@ -244,8 +250,6 @@ impl<'a> APU<'a> {
 			gb.bus.io.audio_params.channels[3].trigger = false;
 		}
 
-		// TODO: there should be a DIV-APU register, but for now, just read dots instead
-
 		// every 4 dots
 		if dots & 0b11 == 0 {
 			self.pulse1_period_div += 1;
@@ -262,8 +266,17 @@ impl<'a> APU<'a> {
 			}
 		}
 
+		let div_main_bit4_set = gb.bus.io.div & 0x1000 != 0;
+		let div_apu_changed = self.div_main_previous_bit4 && !div_main_bit4_set;
+		self.div_main_previous_bit4 = div_main_bit4_set;
+
+		// 512 hz
+		if div_apu_changed {
+			self.div_apu = self.div_apu.wrapping_add(1);
+		}
+
 		// 64 hz
-		if dots & ((DOTS_HZ as u64 >> 6) - 1) == 0 {
+		if div_apu_changed && self.div_apu & 7 == 0 {
 			if self.pulse1_env_pace_regcopy != 0 && self.pulse1_env_counter == 0 {
 				self.pulse1_env_counter = self.pulse1_env_pace_regcopy;
 				self.pulse1_volume_regcopy = match self.pulse1_env_dir_regcopy {
@@ -285,7 +298,7 @@ impl<'a> APU<'a> {
 		}
 
 		// 128 hz
-		if dots & ((DOTS_HZ as u64 >> 7) - 1) == 0 {
+		if div_apu_changed && self.div_apu & 3 == 0 {
 			if self.pulse1_sweep_pace_regcopy != 0 && self.pulse1_sweep_counter == 0 {
 				self.pulse1_sweep_counter = self.pulse1_sweep_pace_regcopy;
 				let old = gb.bus.io.audio_params.channels[0].get_pulse_period();
@@ -307,7 +320,7 @@ impl<'a> APU<'a> {
 		}
 
 		// 256 hz
-		if dots & ((DOTS_HZ as u64 >> 8) - 1) == 0 {
+		if div_apu_changed && self.div_apu & 1 == 0 {
 			if gb.bus.io.audio_params.channels[0].get_length_enable() {
 				let len = gb.bus.io.audio_params.channels[0].get_pulse_length();
 				if len == 63 {
