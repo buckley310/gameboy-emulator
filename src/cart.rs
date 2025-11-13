@@ -1,3 +1,5 @@
+use std::error::Error;
+
 pub const ROM_BANK_SIZE: usize = 0x4000;
 pub const EXRAM_BANK_SIZE: usize = 0x2000;
 
@@ -50,7 +52,7 @@ impl std::default::Default for Cartridge {
 	}
 }
 impl Cartridge {
-	pub fn load_rom(&mut self, mut rom: &[u8]) {
+	pub fn load_rom(&mut self, mut rom: &[u8]) -> Result<(), Box<dyn Error>> {
 		self.rom = vec![];
 
 		self.mbc = MBCType::from_header(rom[0x147]);
@@ -84,7 +86,7 @@ impl Cartridge {
 				assert!(cart_ram_banks == 0);
 				assert!(rom.len() == ROM_BANK_SIZE * cart_rom_banks);
 				while rom.len() > 0 {
-					self.rom.push((&rom[..ROM_BANK_SIZE]).try_into().unwrap());
+					self.rom.push((&rom[..ROM_BANK_SIZE]).try_into()?);
 					rom = &rom[ROM_BANK_SIZE..];
 				}
 			}
@@ -92,7 +94,7 @@ impl Cartridge {
 				assert!(cart_ram_banks <= 4);
 				assert!(rom.len() == ROM_BANK_SIZE * cart_rom_banks);
 				while rom.len() > 0 {
-					self.rom.push((&rom[..ROM_BANK_SIZE]).try_into().unwrap());
+					self.rom.push((&rom[..ROM_BANK_SIZE]).try_into()?);
 					rom = &rom[ROM_BANK_SIZE..];
 				}
 				for _ in 0..cart_ram_banks {
@@ -100,6 +102,7 @@ impl Cartridge {
 				}
 			}
 		}
+		Ok(())
 	}
 	pub fn peek(&self, addr16: u16) -> u8 {
 		let addr = addr16 as usize;

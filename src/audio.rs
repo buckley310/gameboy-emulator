@@ -1,5 +1,6 @@
 use crate::{DOTS_HZ, GB};
 use raylib::prelude::*;
+use std::error::Error;
 
 const AUDIO_FREQ: u16 = 48_000;
 const VOLUME_DIAL: f32 = 1.0;
@@ -212,7 +213,7 @@ impl<'a> APU<'a> {
 			audio_stream: stream,
 		}
 	}
-	pub fn tick(&mut self, gb: &mut GB, dots: u64) {
+	pub fn tick(&mut self, gb: &mut GB, dots: u64) -> Result<(), Box<dyn Error>> {
 		if gb.bus.io.audio_params.channels[0].trigger {
 			gb.bus.io.audio_params.channels[0].trigger = false;
 			self.pulse1_enabled = true;
@@ -379,11 +380,10 @@ impl<'a> APU<'a> {
 			if self.audio_buffer_ofs < AUDIO_BUFFER_SIZE - 1 {
 				self.audio_buffer_ofs += 1;
 			} else if self.audio_stream.is_processed() {
-				self.audio_stream
-					.update(self.audio_buffer.as_slice())
-					.unwrap();
+				self.audio_stream.update(self.audio_buffer.as_slice())?;
 				self.audio_buffer_ofs = 0;
 			}
 		}
+		Ok(())
 	}
 }

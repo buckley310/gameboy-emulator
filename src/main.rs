@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
@@ -33,7 +34,7 @@ fn slow_down(real_elapsed: Duration, elapsed_dots: u64) {
 	sleep(ingame_elapsed.saturating_sub(real_elapsed));
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
 	let mut gb = GB::default();
 	let mut rom: Vec<u8> = vec![];
 
@@ -43,7 +44,7 @@ fn main() {
 	let argv: Vec<String> = std::env::args().collect();
 	for arg in &argv[1..] {
 		let mut arg_iter = arg.chars();
-		if arg_iter.next().unwrap() == '-' {
+		if arg_iter.next().unwrap_or_default() == '-' {
 			for arg_char in arg_iter {
 				match arg_char {
 					'c' => gb.cpu.debug = true,
@@ -53,18 +54,16 @@ fn main() {
 				}
 			}
 		} else {
-			rom = std::fs::File::open(&std::path::Path::new(arg))
-				.unwrap()
+			rom = std::fs::File::open(&std::path::Path::new(arg))?
 				.bytes()
-				.map(|x| x.unwrap())
-				.collect();
+				.collect::<Result<Vec<_>, _>>()?;
 		}
 	}
 
-	let mut ui = ui::UI::new(false);
+	let mut ui = ui::UI::new(false)?;
 
 	assert!(rom.len() > 0);
-	gb.bus.cart.load_rom(&rom);
+	gb.bus.cart.load_rom(&rom)?;
 
 	let lgb = Arc::new(Mutex::new(gb));
 
@@ -78,9 +77,9 @@ fn main() {
 	while play {
 		slow_down(start.elapsed(), dots);
 
-		let mut gb = lgb.lock().unwrap();
+		let mut gb = lgb.lock().map_err(|x| x.to_string())?;
 
-		ui.draw(&mut gb, &mut play);
+		ui.draw(&mut gb, &mut play)?;
 
 		while play {
 			dots += 1;
@@ -118,7 +117,7 @@ fn main() {
 				break;
 			}
 
-			apu.tick(&mut gb, dots);
+			apu.tick(&mut gb, dots)?;
 
 			// Advance CPU
 			if dots_cpu < dots {
@@ -130,4 +129,5 @@ fn main() {
 			}
 		}
 	}
+	Ok(())
 }

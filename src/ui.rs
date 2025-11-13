@@ -1,5 +1,6 @@
 use crate::{GB, bus};
-use raylib::prelude::*;
+use raylib::{error::LoadTextureError, prelude::*};
+use std::error::Error;
 
 const CONTROLS: &[(bool, u8, KeyboardKey)] = &[
 	// (is_joypad, io_pin, keycode)
@@ -61,10 +62,14 @@ fn color_dmg(n: u8, palette: u8) -> (u8, u8, u8) {
 	(c, c, c)
 }
 
-fn blank_tex(rl: &mut (RaylibHandle, RaylibThread), w: i32, h: i32) -> Texture2D {
+fn blank_tex(
+	rl: &mut (RaylibHandle, RaylibThread),
+	w: i32,
+	h: i32,
+) -> Result<Texture2D, LoadTextureError> {
 	let mut img = Image::gen_image_color(w, h, Color::BLACK);
 	img.set_format(PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8);
-	rl.0.load_texture_from_image(&rl.1, &img).unwrap()
+	rl.0.load_texture_from_image(&rl.1, &img)
 }
 
 struct GbTextures {
@@ -83,28 +88,28 @@ pub struct UI {
 	verbose: bool,
 }
 impl UI {
-	pub fn new(verbose: bool) -> UI {
+	pub fn new(verbose: bool) -> Result<UI, LoadTextureError> {
 		let (w, h) = match verbose {
 			true => (1920, 1080),
 			false => (160 * 3 + PADDING * 2, 144 * 3 + (PADDING * 2)),
 		};
 		let mut rl = raylib::init().size(w, h).build();
 		let tex = GbTextures {
-			fb: blank_tex(&mut rl, 160, 144),
-			mem: blank_tex(&mut rl, 256, 256),
-			bg: blank_tex(&mut rl, 256, 256),
-			win: blank_tex(&mut rl, 256, 256),
-			tile: blank_tex(&mut rl, TILE_VIEWER_WIDTH, TILE_VIEWER_HEIGHT),
-			vram: blank_tex(&mut rl, VRAM_WIDTH, VRAM_HEIGHT),
+			fb: blank_tex(&mut rl, 160, 144)?,
+			mem: blank_tex(&mut rl, 256, 256)?,
+			bg: blank_tex(&mut rl, 256, 256)?,
+			win: blank_tex(&mut rl, 256, 256)?,
+			tile: blank_tex(&mut rl, TILE_VIEWER_WIDTH, TILE_VIEWER_HEIGHT)?,
+			vram: blank_tex(&mut rl, VRAM_WIDTH, VRAM_HEIGHT)?,
 		};
-		UI {
+		Ok(UI {
 			rl,
 			tex,
 			frame_number: 0,
 			verbose,
-		}
+		})
 	}
-	pub fn draw(&mut self, gb: &mut GB, play: &mut bool) {
+	pub fn draw(&mut self, gb: &mut GB, play: &mut bool) -> Result<(), Box<dyn Error>> {
 		if self.rl.0.window_should_close() {
 			*play = false
 		}
@@ -122,13 +127,13 @@ impl UI {
 			}
 		}
 
-		self.tex.fb.update_texture(&gb.framebuffer).unwrap();
+		self.tex.fb.update_texture(&gb.framebuffer)?;
 		if self.verbose {
-			self.tex.mem.update_texture(&mem_dump(&gb.bus)).unwrap();
-			self.tex.bg.update_texture(&bg_map(&gb.bus)).unwrap();
-			self.tex.win.update_texture(&window_map(&gb.bus)).unwrap();
-			self.tex.tile.update_texture(&tile_dump(&gb.bus)).unwrap();
-			self.tex.vram.update_texture(&vram_dump(&gb.bus)).unwrap();
+			self.tex.mem.update_texture(&mem_dump(&gb.bus))?;
+			self.tex.bg.update_texture(&bg_map(&gb.bus))?;
+			self.tex.win.update_texture(&window_map(&gb.bus))?;
+			self.tex.tile.update_texture(&tile_dump(&gb.bus))?;
+			self.tex.vram.update_texture(&vram_dump(&gb.bus))?;
 		}
 
 		let mut l = Layout::default();
@@ -181,6 +186,7 @@ impl UI {
 			);
 		}
 		self.frame_number += 1;
+		Ok(())
 	}
 }
 
