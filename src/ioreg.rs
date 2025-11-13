@@ -207,7 +207,7 @@ impl IoReg {
 		let mut do_interrupt = false;
 		for _ in 0..mcycles {
 			// add 4 T-cycles, not dots. Doubles in double-speed mode.
-			self.div = self.div.overflowing_add(4).0;
+			self.div = self.div.wrapping_add(4);
 			if self.tac & 0b100 != 0 {
 				let tima_check = match self.tac & 0b11 {
 					0 => 1023,

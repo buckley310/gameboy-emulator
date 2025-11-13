@@ -220,8 +220,8 @@ pub fn cycle(gb: &mut GB) -> u64 {
 
 	let opcode = mem.peek(cpu.pc);
 
-	let imm8 = mem.peek(cpu.pc.overflowing_add(1).0);
-	let imm8_2 = mem.peek(cpu.pc.overflowing_add(2).0);
+	let imm8 = mem.peek(cpu.pc.wrapping_add(1));
+	let imm8_2 = mem.peek(cpu.pc.wrapping_add(2));
 	let imm16 = ((imm8_2 as u16) << 8) | (imm8 as u16);
 
 	if cpu.ime {
@@ -277,13 +277,13 @@ pub fn cycle(gb: &mut GB) -> u64 {
 							// (2, 1)
 						}
 						0b00_011_000 => {
-							cpu.pc = cpu.pc.overflowing_add(u8_as_signed_ofs(imm8)).0;
+							cpu.pc = cpu.pc.wrapping_add(u8_as_signed_ofs(imm8));
 							(2, 3)
 						}
 						_ => {
 							// 0b001--000
 							if get_cond(&cpu.f, (opcode >> 3) & 0b11) {
-								cpu.pc = cpu.pc.overflowing_add(u8_as_signed_ofs(imm8)).0;
+								cpu.pc = cpu.pc.wrapping_add(u8_as_signed_ofs(imm8));
 								(2, 3)
 							} else {
 								(2, 2)
@@ -302,10 +302,11 @@ pub fn cycle(gb: &mut GB) -> u64 {
 						// 00--1001
 						let value = get_r16(cpu, opcode >> 4);
 						let old_hl = cpu.get_hl();
-						cpu.set_hl(old_hl.overflowing_add(value).0);
+						let new_hl = old_hl.overflowing_add(value);
+						cpu.set_hl(new_hl.0);
 						cpu.f.n = false;
 						cpu.f.h = (old_hl & 0xfff) + (value & 0xfff) > 0xfff;
-						cpu.f.c = old_hl.overflowing_add(value).1;
+						cpu.f.c = new_hl.1;
 						(1, 2)
 					}
 				}
@@ -326,13 +327,13 @@ pub fn cycle(gb: &mut GB) -> u64 {
 					if opcode & 0b1000 == 0 {
 						// 00--0011
 						let r16 = (opcode >> 4) & 0b11;
-						let value = get_r16(cpu, r16).overflowing_add(1).0;
+						let value = get_r16(cpu, r16).wrapping_add(1);
 						set_r16(cpu, r16, value);
 						(1, 2)
 					} else {
 						// 00--1011
 						let r16 = (opcode >> 4) & 0b11;
-						let value = get_r16(cpu, r16).overflowing_sub(1).0;
+						let value = get_r16(cpu, r16).wrapping_sub(1);
 						set_r16(cpu, r16, value);
 						(1, 2)
 					}
@@ -340,7 +341,7 @@ pub fn cycle(gb: &mut GB) -> u64 {
 				4 => {
 					// 00---100
 					let (r8, r8_cost) = get_r8(cpu, mem, opcode >> 3);
-					let n = r8.overflowing_add(1).0;
+					let n = r8.wrapping_add(1);
 					let r8dst_cost = set_r8(cpu, mem, opcode >> 3, n);
 					cpu.f.z = n == 0;
 					cpu.f.n = false;
@@ -350,7 +351,7 @@ pub fn cycle(gb: &mut GB) -> u64 {
 				5 => {
 					// 00---101
 					let (r8, r8_cost) = get_r8(cpu, mem, opcode >> 3);
-					let n = r8.overflowing_sub(1).0;
+					let n = r8.wrapping_sub(1);
 					let r8dst_cost = set_r8(cpu, mem, opcode >> 3, n);
 					cpu.f.z = n == 0;
 					cpu.f.n = true;
@@ -418,7 +419,7 @@ pub fn cycle(gb: &mut GB) -> u64 {
 								if cpu.f.c {
 									adj += 0x60;
 								}
-								cpu.a = cpu.a.overflowing_sub(adj).0;
+								cpu.a = cpu.a.wrapping_sub(adj);
 							} else {
 								if cpu.f.h || (cpu.a & 0xf) > 0x9 {
 									adj += 0x6;
@@ -427,7 +428,7 @@ pub fn cycle(gb: &mut GB) -> u64 {
 									adj += 0x60;
 									cpu.f.c = true;
 								}
-								cpu.a = cpu.a.overflowing_add(adj).0;
+								cpu.a = cpu.a.wrapping_add(adj);
 							}
 							cpu.f.z = cpu.a == 0;
 							cpu.f.h = false;
@@ -902,7 +903,7 @@ pub fn cycle(gb: &mut GB) -> u64 {
 				0b101000 => {
 					let uadd = u8_as_signed_ofs(imm8);
 					let old_sp = cpu.sp;
-					cpu.sp = old_sp.overflowing_add(uadd).0;
+					cpu.sp = old_sp.wrapping_add(uadd);
 					cpu.f.z = false;
 					cpu.f.n = false;
 					cpu.f.h = (old_sp & 0xf) + (uadd & 0xf) > 0xf;
@@ -911,7 +912,7 @@ pub fn cycle(gb: &mut GB) -> u64 {
 				}
 				0b111000 => {
 					let uadd = u8_as_signed_ofs(imm8);
-					cpu.set_hl(cpu.sp.overflowing_add(uadd).0);
+					cpu.set_hl(cpu.sp.wrapping_add(uadd));
 					cpu.f.z = false;
 					cpu.f.n = false;
 					cpu.f.h = (cpu.sp & 0xf) + (uadd & 0xf) > 0xf;
@@ -954,10 +955,6 @@ pub fn cycle(gb: &mut GB) -> u64 {
 		cpu.ime_soon = true;
 	}
 
-	let tmp = cpu.pc.overflowing_add(bytes);
-	if tmp.1 {
-		println!("PC OVERFLOW!")
-	}
-	cpu.pc = tmp.0;
+	cpu.pc = cpu.pc.wrapping_add(bytes);
 	mcycles
 }
