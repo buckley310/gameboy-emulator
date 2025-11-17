@@ -17,44 +17,40 @@ struct Channel {
 	trigger: bool,
 }
 impl Channel {
-	// fn get_trigger_enable(&self) {}
+	// all channels
 	fn get_length_enable(&self) -> bool {
 		self.nr[4] & 0b_0100_0000 != 0
 	}
-	fn get_pulse1_sweep_dir(&self) -> bool {
-		self.nr[0] & 0b1000 != 0
-	}
-	fn get_pulse1_sweep_pace(&self) -> u8 {
-		(self.nr[0] >> 4) & 7
-	}
-	fn get_pulse1_sweep_step(&self) -> u8 {
+
+	// pulse channels
+	fn get_pulse_sweep_step(&self) -> u8 {
 		self.nr[0] & 7
 	}
+	fn get_pulse_sweep_dir(&self) -> bool {
+		self.nr[0] & 0b1000 != 0
+	}
+	fn get_pulse_sweep_pace(&self) -> u8 {
+		(self.nr[0] >> 4) & 7
+	}
 	fn get_pulse_length(&self) -> u8 {
-		self.nr[1] & 0b_11_1111
+		self.nr[1] & 0b_0011_1111
 	}
 	fn set_pulse_length(&mut self, n: u8) {
 		self.nr[1] &= 0b_1100_0000;
 		self.nr[1] |= 0b_0011_1111 & n;
 	}
-	fn get_noise_length(&self) -> u8 {
-		self.nr[1] & 0b_11_1111
+	fn get_pulse_duty_cycle(&self) -> u8 {
+		self.nr[1] >> 6
 	}
-	fn set_noise_length(&mut self, n: u8) {
-		self.nr[1] &= 0b_1100_0000;
-		self.nr[1] |= 0b_0011_1111 & n;
+	fn get_pulse_env_pace(&self) -> u8 {
+		self.nr[2] & 3
 	}
-	fn get_wave_length(&self) -> u8 {
-		self.nr[1]
+	fn get_pulse_env_dir(&self) -> bool {
+		self.nr[2] & 0b1000 != 0
 	}
-	fn set_wave_length(&mut self, n: u8) {
-		self.nr[1] = n;
+	fn get_pulse_volume(&self) -> u8 {
+		self.nr[2] >> 4
 	}
-	// fn get_noise_length(&self) {}
-	// fn get_wave_length(&self) {}
-	// fn get_pulse_freq_sweep_pace(&self) {}
-	// fn get_pulse_freq_sweep_dir(&self) {}
-	// fn get_pulse_freq_sweep_step(&self) {}
 	fn get_pulse_period(&self) -> usize {
 		(self.nr[3] as usize) | ((self.nr[4] as usize & 0b111) << 8)
 	}
@@ -63,17 +59,39 @@ impl Channel {
 		self.nr[4] &= 0b_1111_1000;
 		self.nr[4] |= ((n >> 8) & 7) as u8;
 	}
-	fn get_pulse_duty_cycle(&self) -> u8 {
-		self.nr[1] >> 6
+
+	// wave channel
+	// fn get_wave_length(&self) -> u8 {
+	// 	self.nr[1]
+	// }
+	// fn set_wave_length(&mut self, n: u8) {
+	// 	self.nr[1] = n;
+	// }
+
+	// noise channel
+	fn get_noise_length(&self) -> u8 {
+		self.nr[1] & 0b_0011_1111
 	}
-	fn get_pulse_volume(&self) -> u8 {
-		self.nr[2] >> 4
+	fn set_noise_length(&mut self, n: u8) {
+		self.nr[1] = 0b_0011_1111 & n;
 	}
-	fn get_pulse_env_dir(&self) -> bool {
+	fn get_noise_env_pace(&self) -> u8 {
+		self.nr[2] & 3
+	}
+	fn get_noise_env_dir(&self) -> bool {
 		self.nr[2] & 0b1000 != 0
 	}
-	fn get_pulse_env_pace(&self) -> u8 {
-		self.nr[2] & 3
+	fn get_noise_volume(&self) -> u8 {
+		self.nr[2] >> 4
+	}
+	fn get_noise_clock_div(&self) -> u8 {
+		self.nr[3] & 7
+	}
+	fn get_noise_lfsr_mode(&self) -> bool {
+		self.nr[3] & 0b_0000_1000 != 0
+	}
+	fn get_noise_clock_shift(&self) -> u8 {
+		self.nr[3] >> 4
 	}
 }
 
@@ -223,7 +241,7 @@ impl<'a> APU<'a> {
 			self.pulse1_env_counter = self.pulse1_env_pace_regcopy;
 
 			self.pulse1_sweep_pace_regcopy =
-				gb.bus.io.audio_params.channels[0].get_pulse1_sweep_pace();
+				gb.bus.io.audio_params.channels[0].get_pulse_sweep_pace();
 			self.pulse1_sweep_counter = self.pulse1_sweep_pace_regcopy;
 		}
 		if gb.bus.io.audio_params.channels[1].trigger {
@@ -292,13 +310,13 @@ impl<'a> APU<'a> {
 		if div_apu_changed && self.div_apu & 3 == 0 {
 			if self.pulse1_sweep_pace_regcopy != 0 && self.pulse1_sweep_counter == 0 {
 				self.pulse1_sweep_pace_regcopy =
-					gb.bus.io.audio_params.channels[0].get_pulse1_sweep_pace();
+					gb.bus.io.audio_params.channels[0].get_pulse_sweep_pace();
 				self.pulse1_sweep_counter = self.pulse1_sweep_pace_regcopy;
 
 				let old = gb.bus.io.audio_params.channels[0].get_pulse_period();
 				let change_by =
-					old / (1 << gb.bus.io.audio_params.channels[0].get_pulse1_sweep_step());
-				match gb.bus.io.audio_params.channels[0].get_pulse1_sweep_dir() {
+					old / (1 << gb.bus.io.audio_params.channels[0].get_pulse_sweep_step());
+				match gb.bus.io.audio_params.channels[0].get_pulse_sweep_dir() {
 					true => {
 						gb.bus.io.audio_params.channels[0]
 							.set_pulse_period(old.saturating_sub(change_by));
