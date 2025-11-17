@@ -257,7 +257,7 @@ impl<'a> APU<'a> {
 			}
 		}
 
-		let div_main_bit4_set = gb.bus.io.div & 0x1000 != 0;
+		let div_main_bit4_set = gb.bus.io.div.get() & 0b_1_0000 != 0;
 		let div_apu_changed = self.div_main_previous_bit4 && !div_main_bit4_set;
 		self.div_main_previous_bit4 = div_main_bit4_set;
 

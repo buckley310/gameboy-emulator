@@ -77,10 +77,35 @@ fn name_of(addr: usize) -> &'static str {
 }
 
 #[derive(Default)]
+pub struct DivRegister(u16);
+impl DivRegister {
+	pub fn get(&self) -> u8 {
+		(self.0 >> 8) as u8
+	}
+	fn reset(&mut self) {
+		self.0 = 0
+	}
+	fn tick_mcycle(&mut self) {
+		self.0 = self.0.wrapping_add(4);
+	}
+	fn should_increment_timer(&self, tac: u8) -> bool {
+		if tac & 0b100 == 0 {
+			return false;
+		}
+		0 == match tac & 0b11 {
+			0 => self.0 & 1023,
+			1 => self.0 & 15,
+			2 => self.0 & 63,
+			_ => self.0 & 255,
+		}
+	}
+}
+
+#[derive(Default)]
 pub struct IoReg {
 	// normal io registers
 	pub p1_joyp: u8,
-	pub div: u16,
+	pub div: DivRegister,
 	pub tima: u8,
 	pub tma: u8,
 	pub tac: u8,
@@ -125,7 +150,7 @@ impl IoReg {
 						_ => buttons & joypad,
 					}
 			}
-			0xFF04 => (self.div >> 8) as u8,
+			0xFF04 => self.div.get(),
 			0xFF05 => self.tima,
 			0xFF0F => self.interrupt,
 			0xFF40 => self.lcdc,
@@ -158,7 +183,7 @@ impl IoReg {
 		}
 		match addr {
 			0xFF00 => self.p1_joyp = data,
-			0xFF04 => self.div = 0,
+			0xFF04 => self.div.reset(),
 			0xFF05 => self.tima = data,
 			0xFF06 => self.tma = data,
 			0xFF07 => self.tac = data,
@@ -206,23 +231,14 @@ impl IoReg {
 
 		let mut do_interrupt = false;
 		for _ in 0..mcycles {
-			// add 4 T-cycles, not dots. Doubles in double-speed mode.
-			self.div = self.div.wrapping_add(4);
-			if self.tac & 0b100 != 0 {
-				let tima_check = match self.tac & 0b11 {
-					0 => 1023,
-					1 => 15,
-					2 => 63,
-					_ => 255,
-				};
-				if self.div & tima_check == 0 {
-					if self.tima == 0xff {
-						self.tima = self.tma;
-						self.interrupt |= INT_TIMER;
-						do_interrupt = true;
-					} else {
-						self.tima += 1;
-					}
+			self.div.tick_mcycle();
+			if self.div.should_increment_timer(self.tac) {
+				if self.tima == 0xff {
+					self.tima = self.tma;
+					self.interrupt |= INT_TIMER;
+					do_interrupt = true;
+				} else {
+					self.tima += 1;
 				}
 			}
 		}
