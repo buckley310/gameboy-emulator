@@ -189,6 +189,14 @@ pub struct APU<'a> {
 	pulse2_env_pace_regcopy: u8,
 	pulse2_env_dir_regcopy: bool,
 
+	noise_enabled: bool,
+	noise_clock: u64,
+	noise_lfsr: u16,
+	noise_volume_regcopy: u8,
+	noise_env_dir_regcopy: bool,
+	noise_env_pace_regcopy: u8,
+	noise_env_counter: u8,
+
 	// Keep the stream around. It closes if it goes out of scope.
 	#[allow(dead_code)]
 	audio_stream: AudioStream<'a>,
@@ -228,6 +236,14 @@ impl<'a> APU<'a> {
 			pulse2_env_pace_regcopy: 0,
 			pulse2_env_dir_regcopy: false,
 
+			noise_enabled: false,
+			noise_clock: 0,
+			noise_lfsr: 0,
+			noise_volume_regcopy: 0,
+			noise_env_dir_regcopy: false,
+			noise_env_pace_regcopy: 0,
+			noise_env_counter: 0,
+
 			audio_stream: stream,
 		}
 	}
@@ -257,9 +273,15 @@ impl<'a> APU<'a> {
 		}
 		if gb.bus.io.audio_params.channels[3].trigger {
 			gb.bus.io.audio_params.channels[3].trigger = false;
+			self.noise_enabled = true;
+			self.noise_volume_regcopy = gb.bus.io.audio_params.channels[3].get_noise_volume();
+			self.noise_env_dir_regcopy = gb.bus.io.audio_params.channels[3].get_noise_env_dir();
+			self.noise_env_pace_regcopy = gb.bus.io.audio_params.channels[3].get_noise_env_pace();
+			self.noise_clock = 0;
+			self.noise_lfsr = 0;
 		}
 
-		// every 4 dots
+		// every 4 dots (1048576 hz)
 		if dots & 0b11 == 0 {
 			self.pulse1_period_div += 1;
 			if self.pulse1_period_div >= 0x800 {
@@ -272,6 +294,32 @@ impl<'a> APU<'a> {
 				self.pulse2_current_sample += 1;
 				self.pulse2_current_sample &= 7;
 				self.pulse2_period_div = gb.bus.io.audio_params.channels[1].get_pulse_period();
+			}
+		}
+
+		// every 16 dots (262144 hz)
+		if dots & 0b1111 == 0 {
+			let noise_freq_div = {
+				let exp = 1 << gb.bus.io.audio_params.channels[3].get_noise_clock_shift();
+				match gb.bus.io.audio_params.channels[3].get_noise_clock_div() {
+					0 => exp / 2,
+					d => exp * d as u64,
+				}
+			};
+
+			self.noise_clock += 1;
+			if self.noise_clock >= noise_freq_div
+				&& gb.bus.io.audio_params.channels[3].get_noise_clock_shift() < 14
+			{
+				self.noise_clock = 0;
+				let new_bit = 1 & (!(self.noise_lfsr ^ (self.noise_lfsr >> 1)));
+				self.noise_lfsr >>= 1;
+				self.noise_lfsr &= 0b_0111_1111_1111_1111;
+				self.noise_lfsr |= new_bit << 15;
+				if gb.bus.io.audio_params.channels[3].get_noise_lfsr_mode() {
+					self.noise_lfsr &= 0b_1111_1111_0111_1111;
+					self.noise_lfsr |= new_bit << 7;
+				}
 			}
 		}
 
@@ -303,6 +351,15 @@ impl<'a> APU<'a> {
 				}
 			} else {
 				self.pulse2_env_counter = self.pulse2_env_counter.saturating_sub(1);
+			}
+			if self.noise_env_pace_regcopy != 0 && self.noise_env_counter == 0 {
+				self.noise_env_counter = self.noise_env_pace_regcopy;
+				self.noise_volume_regcopy = match self.noise_env_dir_regcopy {
+					true => (self.noise_volume_regcopy + 1).min(0xf),
+					false => self.noise_volume_regcopy.saturating_sub(1),
+				}
+			} else {
+				self.noise_env_counter = self.noise_env_counter.saturating_sub(1);
 			}
 		}
 
@@ -351,7 +408,11 @@ impl<'a> APU<'a> {
 				// length timer max == 256
 			}
 			if gb.bus.io.audio_params.channels[3].get_length_enable() {
-				// length timer max == 64
+				let len = gb.bus.io.audio_params.channels[3].get_noise_length();
+				if len == 63 {
+					self.noise_enabled = false;
+				}
+				gb.bus.io.audio_params.channels[3].set_noise_length(len.saturating_add(1));
 			}
 		}
 
@@ -392,7 +453,15 @@ impl<'a> APU<'a> {
 
 			let c3 = { 0 };
 
-			let c4 = { 0 };
+			let c4 = if self.noise_enabled {
+				let x = self.noise_volume_regcopy;
+				match self.noise_lfsr & 1 {
+					1 => x as i16 * 0x888,
+					_ => x as i16 * -0x888,
+				}
+			} else {
+				0
+			};
 
 			self.audio_buffer[self.audio_buffer_ofs] = c1 / 4 + c2 / 4 + c3 / 4 + c4 / 4;
 			if self.audio_buffer_ofs < AUDIO_BUFFER_SIZE - 1 {
