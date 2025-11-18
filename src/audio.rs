@@ -340,27 +340,26 @@ impl<'a> APU<'a> {
 					true => (self.pulse1_volume_regcopy + 1).min(0xf),
 					false => self.pulse1_volume_regcopy.saturating_sub(1),
 				}
-			} else {
-				self.pulse1_env_counter = self.pulse1_env_counter.saturating_sub(1);
 			}
+			self.pulse1_env_counter = self.pulse1_env_counter.saturating_sub(1);
+
 			if self.pulse2_env_pace_regcopy != 0 && self.pulse2_env_counter == 0 {
 				self.pulse2_env_counter = self.pulse2_env_pace_regcopy;
 				self.pulse2_volume_regcopy = match self.pulse2_env_dir_regcopy {
 					true => (self.pulse2_volume_regcopy + 1).min(0xf),
 					false => self.pulse2_volume_regcopy.saturating_sub(1),
 				}
-			} else {
-				self.pulse2_env_counter = self.pulse2_env_counter.saturating_sub(1);
 			}
+			self.pulse2_env_counter = self.pulse2_env_counter.saturating_sub(1);
+
 			if self.noise_env_pace_regcopy != 0 && self.noise_env_counter == 0 {
 				self.noise_env_counter = self.noise_env_pace_regcopy;
 				self.noise_volume_regcopy = match self.noise_env_dir_regcopy {
 					true => (self.noise_volume_regcopy + 1).min(0xf),
 					false => self.noise_volume_regcopy.saturating_sub(1),
 				}
-			} else {
-				self.noise_env_counter = self.noise_env_counter.saturating_sub(1);
 			}
+			self.noise_env_counter = self.noise_env_counter.saturating_sub(1);
 		}
 
 		// 128 hz
