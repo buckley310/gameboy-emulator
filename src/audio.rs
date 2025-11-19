@@ -7,6 +7,21 @@ const VOLUME_DIAL: f32 = 1.0;
 const AUDIO_BUFFER_SIZE: usize = 0x1000;
 
 #[derive(Default)]
+struct HiresTimer(u64);
+impl HiresTimer {
+	/// Run this function each time an event happens,
+	///     to measure the frequency of the event.
+	fn tick(&mut self, dots: u64) {
+		println!(
+			"HTimer: {} hz ({} dots)",
+			DOTS_HZ as u64 / (dots - self.0),
+			dots - self.0,
+		);
+		self.0 = dots;
+	}
+}
+
+#[derive(Default)]
 struct Channel {
 	// 	sweep: u8,     // NRx0
 	// 	length: u8,    // NRx1
@@ -200,6 +215,7 @@ pub struct APU<'a> {
 	// Keep the stream around. It closes if it goes out of scope.
 	#[allow(dead_code)]
 	audio_stream: AudioStream<'a>,
+	debug_timer: HiresTimer,
 }
 impl<'a> APU<'a> {
 	pub fn new(device: &'a RaylibAudio) -> Self {
@@ -245,6 +261,7 @@ impl<'a> APU<'a> {
 			noise_env_counter: 0,
 
 			audio_stream: stream,
+			debug_timer: HiresTimer::default(),
 		}
 	}
 	pub fn tick(&mut self, gb: &mut GB, dots: u64) -> Result<(), Box<dyn Error>> {
